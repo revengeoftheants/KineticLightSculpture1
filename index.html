@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+		<style>
+			body {
+				background-color: #000;
+				margin: 0px;
+				overflow: hidden;
+			}
+		</style>
+
+		<script type="text/javascript" src="scripts/libraries/jquery-1.8.3.min.js"></script>
+		<script type="text/javascript" src="scripts/libraries/three.min.js"></script>
+		<script type="text/javascript" src="scripts/libraries/WebGLDeferredRenderer.js"></script>
+		<script type="text/javascript" src="scripts/libraries/ShaderDeferred.js"></script>
+		<script type="text/javascript" src="scripts/shaders/ShaderExtras.js"></script>
+		<script type="text/javascript" src="scripts/postprocessing/EffectComposer.js"></script>
+		<script type="text/javascript" src="scripts/postprocessing/BloomPass.js"></script>
+		<script type="text/javascript" src="scripts/postprocessing/RenderPass.js"></script>
+		<script type="text/javascript" src="scripts/postprocessing/ShaderPass.js"></script>
+		<script type="text/javascript" src="scripts/postprocessing/MaskPass.js"></script>
+		<script type="text/javascript" src="scripts/shaders/FXAAShader.js"></script>
+		<script type="text/javascript" src="scripts/shaders/CopyShader.js"></script>
+		<script type="text/javascript" src="scripts/shaders/ConvolutionShader.js"></script>
+		<script type="text/javascript" src="scripts/libraries/Detector.js"></script>
+		<script type="text/javascript" src="scripts/libraries/OrbitAndPanControls.js"></script>
+		<script type="text/javascript" src="scripts/libraries/dat.gui.min.js"></script>
+		<script type="text/javascript" src="scripts/Main.js"></script>
+		
+		<script type="text/javascript">
+			$(document).ready( function() {
+				Main.Init();
+			});
+		</script>
+	</head>
+	<body>
+		<div id="container" style="height: 492px, width: 876px"></div>
+	</body>
+</html>
