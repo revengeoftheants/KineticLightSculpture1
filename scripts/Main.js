@@ -20,6 +20,7 @@
 	var SCALE = 1;
 	var WARM_LIGHT_CLR = new THREE.Color(0xFFF1E0);
 	var OFF_LIGHT_CLR = new THREE.Color(0x151515);
+	var MAX_LIGHT_INTENSITY_NBR = 5;
 
 
 	/*
@@ -30,7 +31,6 @@
 	var canvasWidth = window.innerWidth, canvasHeight = window.innerHeight;
 	var canvasHalfX = window.innerWidth / 2, canvasHalfY = window.innerHeight / 2;
 	var sculptureLightSrc, mainScenesculptureLights = [];
-	var	sculptureLightIntensityNbr = 2, sculptureLightOpacityNbr = 1, sculptureLightGrayscaleNbr = 1;
 	var sculptureLightMat, sculptureLightGeom;
 	var cnt = 0;
 
@@ -41,8 +41,8 @@
 	Main.Init = function() {
 
 		// Renderer
-		//renderer = new THREE.WebGLDeferredRenderer( { antialias: true, scale: SCALE, brightness: 5, tonemapping: THREE.FilmicOperator } );
-		renderer = new THREE.WebGLRenderer( { antialias: true, scale: SCALE } );
+		renderer = new THREE.WebGLDeferredRenderer( { antialias: true, scale: SCALE, brightness: 5, tonemapping: THREE.FilmicOperator } );
+		//renderer = new THREE.WebGLRenderer( { antialias: true, scale: SCALE } );
 		renderer.setSize(canvasWidth, canvasHeight);  // Cannot set size via constructor parameters for WebGLRenderer.
 		// Gamma correction
 		renderer.gammaInput = true;
@@ -139,21 +139,17 @@
 		var gui = new dat.GUI();
 
 		effectController = {
-			intensity: sculptureLightIntensityNbr,
-			opaqueness: sculptureLightOpacityNbr,
-			lightOnRatio: 1
+			intensity: 1
 		};
 
-		gui.add( effectController, "intensity", 0, 5).step(0.1).onChange(onParmsChange);
-		gui.add( effectController, "opaqueness", 0.0, 1.0).step(0.01).onChange(onParmsChange);
-		gui.add( effectController, "lightOnRatio", 0.0, 1.0).step(0.01).onChange(onParmsChange);
+		gui.add( effectController, "intensity", 0, 1).step(0.01).onChange(onParmsChange);
 	}
 
 
 
 	function crteSculptureLight() {
-		//sculptureLight = new THREE.sculptureLight(0xFFFFFF, sculptureLightIntensityNbr);
-		sculptureLightSrc = new THREE.SpotLight(WARM_LIGHT_CLR.getHex(), sculptureLightIntensityNbr, 250);
+		sculptureLightSrc = new THREE.AreaLight(WARM_LIGHT_CLR.getHex(), MAX_LIGHT_INTENSITY_NBR);
+		//sculptureLightSrc = new THREE.SpotLight(WARM_LIGHT_CLR.getHex(), sculptureLightIntensityNbr, 250);
 		sculptureLightSrc.angle = Math.PI/2;  // Should not go past PI/2.
 		sculptureLightSrc.castShadow = true;
 		sculptureLightSrc.shadowCameraNear = 0.1;  // Set the near plane for the shadow camera frustum as close to the light as  possible.
@@ -173,7 +169,6 @@
 		sculptureLightMat = new THREE.MeshBasicMaterial( {color: sculptureLightSrc.color.getHex(), vertexColors: THREE.FaceColors} );
 
 		var backColorNbr = OFF_LIGHT_CLR;
-		//var backColorNbr = 0x151515;
 
 		sculptureLightGeom.faces[5].color.setHex(backColorNbr);
 		sculptureLightGeom.faces[4].color.setHex(backColorNbr);
@@ -188,19 +183,6 @@
 		sculptureLight.scale = sculptureLightSrc.scale;
 
 		scene.add(sculptureLight);
-
-
-		/* Don't think I need any shades -- the lights in the video don't have shades.
-		var shadeGeom = new THREE.CubeGeometry(10, 10, 1);
-		var shadeMat = new THREE.MeshBasicMaterial( { color: 0x000000} );
-		var shade = new THREE.Mesh(shadeGeom, shadeMat);
-		shade.castShadow = true;
-		//shade.position.set(sculptureLight.x - (sculptureLight.width/2), sculptureLight.y - (sculptureLight.height/2), sculptureLight.z);
-		shade.position.set(sculptureLight.position.x + sculptureLightGeom.width/2, sculptureLight.position.y + shadeGeom.height/5, sculptureLight.position.z);
-		shade.rotation.setY(Math.PI/2);
-		scene.add(shade);
-		*/
-
 	}
 
 
@@ -217,11 +199,11 @@
 	 */
 	function onParmsChange() {
 		// Update light
-		sculptureLightSrc.intensity = effectController.intensity;
+		sculptureLightSrc.intensity = effectController.intensity * MAX_LIGHT_INTENSITY_NBR;
 
 		var newColor = new THREE.Color();
 		newColor.copy(OFF_LIGHT_CLR);
-		newColor.lerp(WARM_LIGHT_CLR, effectController.lightOnRatio);
+		newColor.lerp(WARM_LIGHT_CLR, effectController.intensity);
 
 		sculptureLightGeom.faces[3].color.copy(newColor);
 		sculptureLightGeom.colorsNeedUpdate = true;
