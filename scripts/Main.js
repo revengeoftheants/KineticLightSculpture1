@@ -18,6 +18,8 @@
 	 * Constants
 	 */
 	var SCALE = 1;
+	var WARM_LIGHT_CLR = new THREE.Color(0xFFF1E0);
+	var OFF_LIGHT_CLR = new THREE.Color(0x151515);
 
 
 	/*
@@ -27,8 +29,10 @@
 	var	cameraControls, effectController, eyeTargetScale, target = new THREE.Vector3(0, 0, 0);
 	var canvasWidth = window.innerWidth, canvasHeight = window.innerHeight;
 	var canvasHalfX = window.innerWidth / 2, canvasHalfY = window.innerHeight / 2;
-	var areaLight, mainSceneAreaLights = [];
-	var	areaLightIntensityNbr = 20, areaLightOpacityNbr = 1;
+	var sculptureLightSrc, mainScenesculptureLights = [];
+	var	sculptureLightIntensityNbr = 2, sculptureLightOpacityNbr = 1, sculptureLightGrayscaleNbr = 1;
+	var sculptureLightMat, sculptureLightGeom;
+	var cnt = 0;
 
 
 	/*
@@ -37,11 +41,12 @@
 	Main.Init = function() {
 
 		// Renderer
-		renderer = new THREE.WebGLDeferredRenderer( { antialias: true, width: canvasWidth, height: canvasHeight, scale: SCALE, tonemapping: THREE.FilmicOperator, brightness: 2.5 } );
+		//renderer = new THREE.WebGLDeferredRenderer( { antialias: true, scale: SCALE, brightness: 5, tonemapping: THREE.FilmicOperator } );
+		renderer = new THREE.WebGLRenderer( { antialias: true, scale: SCALE } );
+		renderer.setSize(canvasWidth, canvasHeight);  // Cannot set size via constructor parameters for WebGLRenderer.
 		// Gamma correction
 		renderer.gammaInput = true;
 		renderer.gammaOutput = true;
-		//renderer.setClearColorHex(0x0);  // Not available in WebGLDeferredRenderer
 		
 		renderer.shadowMapEnabled = true;  // Shadows are enabled.
 
@@ -50,7 +55,6 @@
 
 		// Main scene
 		scene = new THREE.Scene();
-		//scene.fog = new THREE.Fog( 0x0, 2000, 4000 );
 
 
 		initCamera();
@@ -63,14 +67,15 @@
 		var cubeSizeLength = 10;
 		var goldColor = "#FFDF00";
 		var showFrame = true;
-		var wireMaterial = new THREE.MeshPhongMaterial( { color: goldColor } ) ;
+		var wireMaterial = new THREE.MeshPhongMaterial( { color: goldColor, ambient: goldColor } );
 
 		var cubeGeometry = new THREE.CubeGeometry(cubeSizeLength, cubeSizeLength, cubeSizeLength);
 
 		cube = new THREE.Mesh( cubeGeometry, wireMaterial );
-		cube.position.x = -10;	// centered at origin
-		cube.position.y = 0;	// centered at origin
-		cube.position.z = 0;	// centered at origin
+		cube.position.x = -10;
+		cube.position.y = cubeSizeLength / 2;
+		cube.position.z = 0;
+		cube.receiveShadow = true;
 		scene.add(cube);
 				
 		var floorMap = THREE.ImageUtils.loadTexture( "textures/Ground_Concrete.jpg" );
@@ -78,10 +83,11 @@
 		floorMap.repeat.set(3, 3);
 		floorMap.anisotropy = 4;
 
-		//colors: 808080 - not bad, 323232
-		var floor = new THREE.Mesh( new THREE.PlaneGeometry( 300, 300 ), new THREE.MeshPhongMaterial( { color: 0x808080, specular: 0x141414, shininess: 05, map: floorMap, bumpMap: floorMap, bumpScale: 0.05 } ) );
+		// The lower the specular value is, the less shiny the material will be. The closer it is to the diffuse color, the more it will look like metal.
+		var floor = new THREE.Mesh( new THREE.PlaneGeometry( 300, 300 ), new THREE.MeshPhongMaterial( { color: 0x808080, ambient: 0xFFFFFF, specular: 0x141414, shininess: 05, map: floorMap, bumpMap: floorMap, bumpScale: 0.05 } ) );
 		//floor.rotation.y = Math.PI;  // The repetition of the pattern is less obvious from the side.
 		floor.rotation.x = -Math.PI/2;
+		floor.receiveShadow = true;
 		scene.add( floor );
 				
 
@@ -110,7 +116,7 @@
 
 	function initCamera() {
 		camera = new THREE.PerspectiveCamera(46, canvasWidth / canvasHeight, 1, 1000);
-		camera.position.set( 0, 110, -250 );
+		camera.position.set( 0, 110, -100 );
 		//scene.add(camera);  // Do not need to add the camera to the scene if using EffectComposer.
 		cameraControls = new THREE.OrbitAndPanControls(camera, renderer.domElement);
 		cameraControls.target.set(0, 0, 0);
@@ -123,7 +129,7 @@
 
 
 	function initLights() {
-
+		scene.add(new THREE.AmbientLight(0xFFFFFF));
 		crteSculptureLight();
 	}
 
@@ -133,66 +139,101 @@
 		var gui = new dat.GUI();
 
 		effectController = {
-			intensity: areaLightIntensityNbr,
-			opaqueness: areaLightOpacityNbr
+			intensity: sculptureLightIntensityNbr,
+			opaqueness: sculptureLightOpacityNbr,
+			lightOnRatio: 1
 		};
 
-		gui.add( effectController, "intensity", 0.0, 100.0 ).step(1.0);
-		gui.add( effectController, "opaqueness", 0.0, 1.0).step(0.01);
+		gui.add( effectController, "intensity", 0, 5).step(0.1).onChange(onParmsChange);
+		gui.add( effectController, "opaqueness", 0.0, 1.0).step(0.01).onChange(onParmsChange);
+		gui.add( effectController, "lightOnRatio", 0.0, 1.0).step(0.01).onChange(onParmsChange);
 	}
 
 
 
 	function crteSculptureLight() {
-		areaLight = new THREE.AreaLight(0xFFFFFF, areaLightIntensityNbr);
+		//sculptureLight = new THREE.sculptureLight(0xFFFFFF, sculptureLightIntensityNbr);
+		sculptureLightSrc = new THREE.SpotLight(WARM_LIGHT_CLR.getHex(), sculptureLightIntensityNbr, 250);
+		sculptureLightSrc.angle = Math.PI/2;  // Should not go past PI/2.
+		sculptureLightSrc.castShadow = true;
+		sculptureLightSrc.shadowCameraNear = 0.1;  // Set the near plane for the shadow camera frustum as close to the light as  possible.
+		sculptureLightSrc.shadowCameraFov = 130;  // Default is 50.
+		sculptureLightSrc.shadowCameraVisible = true;
 
-		areaLight.position.set(0, 100, 0);
-		areaLight.rotation.set(20 * Math.PI/180, 0, 0);
-		areaLight.width = 10;
-		areaLight.height = 1;
+
+		sculptureLightSrc.position.set(0, 25, 0);
+		sculptureLightSrc.width = 1;
+		sculptureLightSrc.height = 1;
 		// Note: Setting the attenuation just makes the light turn off for some reason.
-		scene.add(areaLight);	
+		scene.add(sculptureLightSrc);	
 
 
-		var lightGeom = new THREE.CubeGeometry(10, 1, 10);
-		var lightMat = new THREE.MeshBasicMaterial( {color: areaLight.color.getHex(), vertexColors: THREE.FaceColors} );
+		sculptureLightGeom = new THREE.CubeGeometry(5, 0.5, 5);
+		// Setting vertexColors = FaceColors allows you to set the color of each face independently.
+		sculptureLightMat = new THREE.MeshBasicMaterial( {color: sculptureLightSrc.color.getHex(), vertexColors: THREE.FaceColors} );
 
-		var backColorNbr = 0x222222;
+		var backColorNbr = OFF_LIGHT_CLR;
+		//var backColorNbr = 0x151515;
 
-		lightGeom.faces[5].color.setHex(backColorNbr);
-		lightGeom.faces[4].color.setHex(backColorNbr);
-		lightGeom.faces[2].color.setHex(backColorNbr);
-		lightGeom.faces[1].color.setHex(backColorNbr);
-		lightGeom.faces[0].color.setHex(backColorNbr);
+		sculptureLightGeom.faces[5].color.setHex(backColorNbr);
+		sculptureLightGeom.faces[4].color.setHex(backColorNbr);
+		sculptureLightGeom.faces[2].color.setHex(backColorNbr);
+		sculptureLightGeom.faces[1].color.setHex(backColorNbr);
+		sculptureLightGeom.faces[0].color.setHex(backColorNbr);
 
-		var lightMesh = new THREE.Mesh(lightGeom, lightMat);
+		var sculptureLight = new THREE.Mesh(sculptureLightGeom, sculptureLightMat);
 
-		lightMesh.position = areaLight.position;
-		lightMesh.rotation = areaLight.rotation;
-		lightMesh.scale = areaLight.scale;
+		sculptureLight.position = sculptureLightSrc.position;
+		sculptureLight.rotation = sculptureLightSrc.rotation;
+		sculptureLight.scale = sculptureLightSrc.scale;
 
-		scene.add(lightMesh);
+		scene.add(sculptureLight);
+
+
+		/* Don't think I need any shades -- the lights in the video don't have shades.
+		var shadeGeom = new THREE.CubeGeometry(10, 10, 1);
+		var shadeMat = new THREE.MeshBasicMaterial( { color: 0x000000} );
+		var shade = new THREE.Mesh(shadeGeom, shadeMat);
+		shade.castShadow = true;
+		//shade.position.set(sculptureLight.x - (sculptureLight.width/2), sculptureLight.y - (sculptureLight.height/2), sculptureLight.z);
+		shade.position.set(sculptureLight.position.x + sculptureLightGeom.width/2, sculptureLight.position.y + shadeGeom.height/5, sculptureLight.position.z);
+		shade.rotation.setY(Math.PI/2);
+		scene.add(shade);
+		*/
+
 	}
 
 
 
 	function addEffects() {
 
-		renderer.addEffect(new THREE.BloomPass( 0.65 ));
-	}	
+		//renderer.addEffect(new THREE.BloomPass( 0.65 ));
+	}
+
+
+
+	/*
+	 * For performance reasons we only want to update values when the user actually changes parameters.
+	 */
+	function onParmsChange() {
+		// Update light
+		sculptureLightSrc.intensity = effectController.intensity;
+
+		var newColor = new THREE.Color();
+		newColor.copy(OFF_LIGHT_CLR);
+		newColor.lerp(WARM_LIGHT_CLR, effectController.lightOnRatio);
+
+		sculptureLightGeom.faces[3].color.copy(newColor);
+		sculptureLightGeom.colorsNeedUpdate = true;
+	}
 
 
 
 	function render() {
-		//whiteTexture.needsUpdate = true;  // Not sure if this is needed in this situation...
-		
 		var delta = clock.getDelta();
 		
 		// Update camera
 		cameraControls.update(delta);
-
-		// Update light
-		areaLight.intensity = effectController.intensity;
 
 		renderer.render(scene, camera);
 	}
