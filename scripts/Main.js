@@ -18,17 +18,16 @@
 	 * Constants
 	 */
 	var CAM_TARGET_Y_COORD_NBR = 25;
-	var CAM_POS_Z_COORD_NBR = 150;
-	var SCULPTURE_ROW_CNT = 5, SCULPTURE_COL_CNT = 15;
-	var SCULPTURE_LIGHT_WDTH_NBR = 5, SCULPTURE_LIGHT_HGHT_NBR = 5, SCULPTURE_LIGHT_DPTH_NBR = 0.5, SCULPTURE_LIGHT_MARGIN_NBR = 3;
-	var SCULPTURE_LEFT_STRT_COORD_NBR = -(SCULPTURE_COL_CNT * (SCULPTURE_LIGHT_WDTH_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2;
-	var SCULPTURE_FAR_STRT_COORD_NBR = -(SCULPTURE_ROW_CNT * (SCULPTURE_LIGHT_HGHT_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2;
+	var CAM_POS_Z_COORD_NBR = 175;
+	var SCULPTURE_ROW_CNT = 9, SCULPTURE_COL_CNT = 21, SCULPTURE_LIGHT_SRC_INTRVL_NBR = 5;
+	var SCULPTURE_LIGHT_WDTH_NBR = 5, SCULPTURE_LIGHT_HGHT_NBR = 5, SCULPTURE_LIGHT_DPTH_NBR = 0.5, SCULPTURE_LIGHT_MARGIN_NBR = 1;
+	var SCULPTURE_LEFT_STRT_COORD_NBR = -(SCULPTURE_COL_CNT * (SCULPTURE_LIGHT_WDTH_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2 + SCULPTURE_LIGHT_MARGIN_NBR;
+	var SCULPTURE_FAR_STRT_COORD_NBR = -(SCULPTURE_ROW_CNT * (SCULPTURE_LIGHT_HGHT_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2 + SCULPTURE_LIGHT_MARGIN_NBR;
 	var SCALE = 1;
-	var WARM_LIGHT_CLR = new THREE.Color(0xFFF1E0);
-	var OFF_LIGHT_CLR = new THREE.Color(0x090909);  // Essentially black.
-	//var OFF_LIGHT_CLR = new THREE.Color(0x151515);
-	var MAX_LIGHT_INTENSITY_NBR = 1.0;
-	var START_LIGHT_INTENSITY_NBR = 0.0;
+	//var WARM_LIGHT_CLR = new THREE.Color(0xFFF1E0);
+	var WARM_LIGHT_CLR = new THREE.Color(0xE5D9CA), OFF_LIGHT_CLR = new THREE.Color(0x090909);
+	var MAX_LIGHT_INTENSITY_NBR = 2.2, START_LIGHT_INTENSITY_NBR = 0.00, DIRECT_LIGHT_INTENSITY_NBR = 0.14;
+	var MIN_LIGHT_HEIGHT_NBR = 50, MAX_LIGHT_HEIGHT_NBR = 55, MIN_LIGHT_HEIGHT_CHG_INCRMNT_NBR = 1, MAX_LIGHT_HEIGHT_CHG_INCRMNT_NBR = 4;
 
 
 	/*
@@ -39,7 +38,7 @@
 	var canvasWidth = window.innerWidth, canvasHeight = window.innerHeight;
 	var canvasHalfX = window.innerWidth / 2, canvasHalfY = window.innerHeight / 2;
 	var sculptureLightSources = [], sculptureLightGeometries = [], sculptureLights = [];
-	var cnt = 0;
+	var lightHeightNbr, lightHeightDirNbr, lightHeightChgIncrmntNbr;
 
 
 	/*
@@ -122,22 +121,39 @@
 
 
 	function initLights() {
-		//AmbientLight is not currently supported in WebGLDeferredRenderer; however, an ambient light appears to exist.
-		scene.add(new THREE.AmbientLight(0xFFFFFF));
+		//AmbientLight is not currently supported in WebGLDeferredRenderer, so we are using a directional light instead.
+		//scene.add(new THREE.AmbientLight(0xFFFFFF));
+
+		var directionalLight = new THREE.HemisphereLight(WARM_LIGHT_CLR.getHex(), WARM_LIGHT_CLR.getHex(), DIRECT_LIGHT_INTENSITY_NBR);
+		//directionalLight.position.set(-1, 1, 0);
+		scene.add(directionalLight);
 
 		for (var i = 0; i < SCULPTURE_ROW_CNT; i++) {
+
+			// Randomly select each row's starting height, height change increment, and height change direction (i.e., sloping up or down)
+			lightHeightNbr = (Math.random() * (MAX_LIGHT_HEIGHT_NBR - MIN_LIGHT_HEIGHT_NBR)) + MIN_LIGHT_HEIGHT_NBR;
+
+			if (Math.random() <= 0.49) {
+				lightHeightDirNbr = -1;
+			} else {
+				lightHeightDirNbr = 1;
+			}
+
+			lightHeightChgIncrmntNbr = (Math.random() * MAX_LIGHT_HEIGHT_CHG_INCRMNT_NBR) + MIN_LIGHT_HEIGHT_CHG_INCRMNT_NBR;
+
+
 			for (var j = 0; j < SCULPTURE_COL_CNT; j++) {
 				crteSculptureLight(i, j);
+
+				lightHeightNbr += lightHeightDirNbr * lightHeightChgIncrmntNbr;
+
+				if (lightHeightNbr <= MIN_LIGHT_HEIGHT_NBR) {
+					lightHeightDirNbr = -lightHeightDirNbr;
+				} else if (lightHeightNbr >= MAX_LIGHT_HEIGHT_NBR) {
+					lightHeightDirNbr = -lightHeightDirNbr;
+				}
 			}
 		}
-
-		/*
-		for (i = 0; i < sculptureLightSources.length; i++) {
-
-			sculptureLightGeometries[i].faces[3].color.setHex(0x000000);
-			sculptureLightGeometries[i].colorsNeedUpdate = true;
-		}
-		*/
 	}
 
 
@@ -149,7 +165,7 @@
 			intensity: START_LIGHT_INTENSITY_NBR
 		};
 
-		gui.add( effectController, "intensity", 0, 1).step(0.01).onChange(onParmsChange);
+		gui.add(effectController, "intensity", 0.00, 1.00).step(0.01).onChange(onParmsChange);
 	}
 
 
@@ -167,18 +183,23 @@
 		sculptureLightSources[lightIdx] = lightSrc;
 		//lightSrc = new THREE.SpotLight(WARM_LIGHT_CLR.getHex(), sculptureLightIntensityNbr, 250);
 		lightSrc.angle = Math.PI/2;  // Should not go past PI/2.
-		//lightSrc.castShadow = true;
+		lightSrc.castShadow = true;
 		lightSrc.shadowCameraNear = 0.1;  // Set the near plane for the shadow camera frustum as close to the light as  possible.
 		lightSrc.shadowCameraFov = 130;  // Default is 50.
-		lightSrc.shadowCameraVisible = true;
+		lightSrc.shadowCameraVisible = false;  // Does not apply to WebGLDeferredRenderer.
 
 		var lightXCoordNbr = SCULPTURE_LEFT_STRT_COORD_NBR + (inpLightColIdx * (SCULPTURE_LIGHT_WDTH_NBR + SCULPTURE_LIGHT_MARGIN_NBR));
-		var lightZCoordNbr = SCULPTURE_FAR_STRT_COORD_NBR + (inpLightRowIdx * (SCULPTURE_LIGHT_HGHT_NBR + SCULPTURE_LIGHT_MARGIN_NBR))
+		var lightZCoordNbr = SCULPTURE_FAR_STRT_COORD_NBR + (inpLightRowIdx * (SCULPTURE_LIGHT_HGHT_NBR + SCULPTURE_LIGHT_MARGIN_NBR));
 
-		lightSrc.position.set(lightXCoordNbr, 50, lightZCoordNbr);
+		lightSrc.position.set(lightXCoordNbr, lightHeightNbr, lightZCoordNbr);
 		lightSrc.width = 1;
 		lightSrc.height = 1;
-		scene.add(lightSrc);
+
+
+		// Having many lights in a scene is expensive so we will only add a light source at a certain interval.
+		if (lightIdx % SCULPTURE_LIGHT_SRC_INTRVL_NBR === 0) {
+			scene.add(lightSrc);
+		}
 
 
 		var sculptureLightGeom = new THREE.CubeGeometry(SCULPTURE_LIGHT_WDTH_NBR, SCULPTURE_LIGHT_DPTH_NBR, SCULPTURE_LIGHT_HGHT_NBR);
@@ -200,6 +221,7 @@
 		sculptureLight.position = lightSrc.position;
 		sculptureLight.rotation = lightSrc.rotation;
 		sculptureLight.scale = lightSrc.scale;
+		sculptureLight.receiveShadow = true;
 
 		scene.add(sculptureLight);
 	}
@@ -256,7 +278,7 @@
 		window.requestAnimationFrame(animate);
 		render();
 		stats.update();
-	};
+	}
 
 
 
@@ -266,7 +288,29 @@
 		// Update camera
 		cameraControls.update(delta);
 
+
+		// Render
 		renderer.render(scene, camera);
+	}
+
+
+
+	function animateLights() {
+
+		// Some starter code
+		var heightChgNbr = (0.001 * clock.getElapsedTime()) % 15;
+		var newHeightNbr = sculptureLightSources[9].position.y + (heightChgNbr * heightChgDirectionNbr);
+
+		if (newHeightNbr <= 35) {
+			newHeightNbr = 35;
+			heightChgDirectionNbr = -heightChgDirectionNbr;
+		} else if (newHeightNbr >= 65) {
+			newHeightNbr = 65;
+			heightChgDirectionNbr = -heightChgDirectionNbr;
+		}
+
+		sculptureLightSources[9].position.setY(newHeightNbr);
+		sculptureLights[9].position.setY(newHeightNbr);
 	}
 
 
