@@ -12,15 +12,23 @@
  * undefined: Nothing should be passed via this parameter. This ensures that you can use "undefined" here without worrying that another loaded
  * 			  script as redefined the global variable "undefined".
  */
-(function( Main, $, undefined) {
+(function(Main, $, undefined) {
 
 	/*
 	 * Constants
 	 */
+	var CAM_TARGET_Y_COORD_NBR = 25;
+	var CAM_POS_Z_COORD_NBR = 150;
+	var SCULPTURE_ROW_CNT = 5, SCULPTURE_COL_CNT = 15;
+	var SCULPTURE_LIGHT_WDTH_NBR = 5, SCULPTURE_LIGHT_HGHT_NBR = 5, SCULPTURE_LIGHT_DPTH_NBR = 0.5, SCULPTURE_LIGHT_MARGIN_NBR = 3;
+	var SCULPTURE_LEFT_STRT_COORD_NBR = -(SCULPTURE_COL_CNT * (SCULPTURE_LIGHT_WDTH_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2;
+	var SCULPTURE_FAR_STRT_COORD_NBR = -(SCULPTURE_ROW_CNT * (SCULPTURE_LIGHT_HGHT_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2;
 	var SCALE = 1;
 	var WARM_LIGHT_CLR = new THREE.Color(0xFFF1E0);
-	var OFF_LIGHT_CLR = new THREE.Color(0x151515);
-	var MAX_LIGHT_INTENSITY_NBR = 5;
+	var OFF_LIGHT_CLR = new THREE.Color(0x090909);  // Essentially black.
+	//var OFF_LIGHT_CLR = new THREE.Color(0x151515);
+	var MAX_LIGHT_INTENSITY_NBR = 1.0;
+	var START_LIGHT_INTENSITY_NBR = 0.0;
 
 
 	/*
@@ -30,8 +38,7 @@
 	var	cameraControls, effectController, eyeTargetScale, target = new THREE.Vector3(0, 0, 0);
 	var canvasWidth = window.innerWidth, canvasHeight = window.innerHeight;
 	var canvasHalfX = window.innerWidth / 2, canvasHalfY = window.innerHeight / 2;
-	var sculptureLightSrc, mainScenesculptureLights = [];
-	var sculptureLightMat, sculptureLightGeom;
+	var sculptureLightSources = [], sculptureLightGeometries = [], sculptureLights = [];
 	var cnt = 0;
 
 
@@ -53,13 +60,20 @@
 		var container = document.getElementById('container');
 		container.appendChild( renderer.domElement );
 
-		// Main scene
-		scene = new THREE.Scene();
+		// Stats
+		stats = new Stats();
+		stats.domElement.style.position = "absolute";
+		stats.domElement.style.top = "8px";
+		stats.domElement.style.zIndex = 100;
+		container.appendChild(stats.domElement);
 
+
+		scene = new THREE.Scene();
 
 		initCamera();
 		initLights();
 		initGUI();
+		addEnvironment();
 		addEffects();
 
 
@@ -78,6 +92,124 @@
 		cube.receiveShadow = true;
 		scene.add(cube);
 				
+
+		clock = new THREE.Clock();
+
+		
+		$(window).load( function() {
+			animate();
+		});
+	};
+
+
+
+	/*
+	 * Private methods
+	 */
+
+	function initCamera() {
+		camera = new THREE.PerspectiveCamera(46, canvasWidth / canvasHeight, 1, 1000);
+		camera.position.set(0, 5, CAM_POS_Z_COORD_NBR);
+		//scene.add(camera);  // Do not need to add the camera to the scene if using EffectComposer.
+		cameraControls = new THREE.OrbitAndPanControls(camera, renderer.domElement);
+		cameraControls.target.set(0, CAM_TARGET_Y_COORD_NBR, 0);
+
+		var startDirectionVect = new THREE.Vector3();
+		startDirectionVect.subVectors( camera.position, cameraControls.target );
+		eyeTargetScale = Math.tan(camera.fov * (Math.PI/180)/2) * startDirectionVect.length();
+	}
+
+
+
+	function initLights() {
+		//AmbientLight is not currently supported in WebGLDeferredRenderer; however, an ambient light appears to exist.
+		scene.add(new THREE.AmbientLight(0xFFFFFF));
+
+		for (var i = 0; i < SCULPTURE_ROW_CNT; i++) {
+			for (var j = 0; j < SCULPTURE_COL_CNT; j++) {
+				crteSculptureLight(i, j);
+			}
+		}
+
+		/*
+		for (i = 0; i < sculptureLightSources.length; i++) {
+
+			sculptureLightGeometries[i].faces[3].color.setHex(0x000000);
+			sculptureLightGeometries[i].colorsNeedUpdate = true;
+		}
+		*/
+	}
+
+
+
+	function initGUI() {
+		var gui = new dat.GUI();
+
+		effectController = {
+			intensity: START_LIGHT_INTENSITY_NBR
+		};
+
+		gui.add( effectController, "intensity", 0, 1).step(0.01).onChange(onParmsChange);
+	}
+
+
+	/*
+	 * Creates a light for the sculpture.
+	 *
+	 * inpLightRowIdx: The index of this light's row.
+	 * inpLightColIdx: The index of this light's column.
+	 */
+	function crteSculptureLight(inpLightRowIdx, inpLightColIdx) {
+
+		var lightIdx = inpLightRowIdx * SCULPTURE_COL_CNT + inpLightColIdx;
+
+		var lightSrc = new THREE.AreaLight(WARM_LIGHT_CLR.getHex(), START_LIGHT_INTENSITY_NBR);
+		sculptureLightSources[lightIdx] = lightSrc;
+		//lightSrc = new THREE.SpotLight(WARM_LIGHT_CLR.getHex(), sculptureLightIntensityNbr, 250);
+		lightSrc.angle = Math.PI/2;  // Should not go past PI/2.
+		//lightSrc.castShadow = true;
+		lightSrc.shadowCameraNear = 0.1;  // Set the near plane for the shadow camera frustum as close to the light as  possible.
+		lightSrc.shadowCameraFov = 130;  // Default is 50.
+		lightSrc.shadowCameraVisible = true;
+
+		var lightXCoordNbr = SCULPTURE_LEFT_STRT_COORD_NBR + (inpLightColIdx * (SCULPTURE_LIGHT_WDTH_NBR + SCULPTURE_LIGHT_MARGIN_NBR));
+		var lightZCoordNbr = SCULPTURE_FAR_STRT_COORD_NBR + (inpLightRowIdx * (SCULPTURE_LIGHT_HGHT_NBR + SCULPTURE_LIGHT_MARGIN_NBR))
+
+		lightSrc.position.set(lightXCoordNbr, 50, lightZCoordNbr);
+		lightSrc.width = 1;
+		lightSrc.height = 1;
+		scene.add(lightSrc);
+
+
+		var sculptureLightGeom = new THREE.CubeGeometry(SCULPTURE_LIGHT_WDTH_NBR, SCULPTURE_LIGHT_DPTH_NBR, SCULPTURE_LIGHT_HGHT_NBR);
+		sculptureLightGeometries[lightIdx] = sculptureLightGeom;
+
+		// Setting vertexColors = FaceColors allows you to set the color of each face independently.
+		// NOTE: Set the mesh ambient and diffuse colors to the full intensity of the lights they represent; otherwise, they will not glow.
+		var sculptureLightMat = new THREE.MeshBasicMaterial( {color: lightSrc.color.getHex(), ambient: lightSrc.color.getHex(), vertexColors: THREE.FaceColors} );
+
+		// Now set ALL the faces to the desired "off" color and set colorsNeedUpdate to true. This will cause the lights to appear off upon first render.
+		for (var i = 0; i < sculptureLightGeom.faces.length; i++) {
+			sculptureLightGeom.faces[i].color.setHex(OFF_LIGHT_CLR.getHex());			
+		}
+		sculptureLightGeom.colorsNeedUpdate = true;
+
+		var sculptureLight = new THREE.Mesh(sculptureLightGeom, sculptureLightMat);
+		sculptureLights[lightIdx] = sculptureLight;
+
+		sculptureLight.position = lightSrc.position;
+		sculptureLight.rotation = lightSrc.rotation;
+		sculptureLight.scale = lightSrc.scale;
+
+		scene.add(sculptureLight);
+	}
+
+
+
+	/*
+	 * 
+	 */
+	function addEnvironment() {
 		var floorMap = THREE.ImageUtils.loadTexture( "textures/Ground_Concrete.jpg" );
 		floorMap.wrapS = floorMap.wrapT = THREE.RepeatWrapping;
 		floorMap.repeat.set(3, 3);
@@ -89,100 +221,6 @@
 		floor.rotation.x = -Math.PI/2;
 		floor.receiveShadow = true;
 		scene.add( floor );
-				
-
-		clock = new THREE.Clock();
-		
-		$(window).load( function() {
-			Main.Animate();
-		});
-	};
-
-
-
-	Main.Animate = function() {
-		// Rendering loop.
-		window.requestAnimationFrame(Main.Animate);
-		render();
-	};
-
-
-
-
-
-	/*
-	 * Private methods
-	 */
-
-	function initCamera() {
-		camera = new THREE.PerspectiveCamera(46, canvasWidth / canvasHeight, 1, 1000);
-		camera.position.set( 0, 110, -100 );
-		//scene.add(camera);  // Do not need to add the camera to the scene if using EffectComposer.
-		cameraControls = new THREE.OrbitAndPanControls(camera, renderer.domElement);
-		cameraControls.target.set(0, 0, 0);
-
-		var startDirectionVect = new THREE.Vector3();
-		startDirectionVect.subVectors( camera.position, cameraControls.target );
-		eyeTargetScale = Math.tan(camera.fov * (Math.PI/180)/2) * startDirectionVect.length();
-	}
-
-
-
-	function initLights() {
-		scene.add(new THREE.AmbientLight(0xFFFFFF));
-		crteSculptureLight();
-	}
-
-
-
-	function initGUI() {
-		var gui = new dat.GUI();
-
-		effectController = {
-			intensity: 1
-		};
-
-		gui.add( effectController, "intensity", 0, 1).step(0.01).onChange(onParmsChange);
-	}
-
-
-
-	function crteSculptureLight() {
-		sculptureLightSrc = new THREE.AreaLight(WARM_LIGHT_CLR.getHex(), MAX_LIGHT_INTENSITY_NBR);
-		//sculptureLightSrc = new THREE.SpotLight(WARM_LIGHT_CLR.getHex(), sculptureLightIntensityNbr, 250);
-		sculptureLightSrc.angle = Math.PI/2;  // Should not go past PI/2.
-		sculptureLightSrc.castShadow = true;
-		sculptureLightSrc.shadowCameraNear = 0.1;  // Set the near plane for the shadow camera frustum as close to the light as  possible.
-		sculptureLightSrc.shadowCameraFov = 130;  // Default is 50.
-		sculptureLightSrc.shadowCameraVisible = true;
-
-
-		sculptureLightSrc.position.set(0, 25, 0);
-		sculptureLightSrc.width = 1;
-		sculptureLightSrc.height = 1;
-		// Note: Setting the attenuation just makes the light turn off for some reason.
-		scene.add(sculptureLightSrc);	
-
-
-		sculptureLightGeom = new THREE.CubeGeometry(5, 0.5, 5);
-		// Setting vertexColors = FaceColors allows you to set the color of each face independently.
-		sculptureLightMat = new THREE.MeshBasicMaterial( {color: sculptureLightSrc.color.getHex(), vertexColors: THREE.FaceColors} );
-
-		var backColorNbr = OFF_LIGHT_CLR;
-
-		sculptureLightGeom.faces[5].color.setHex(backColorNbr);
-		sculptureLightGeom.faces[4].color.setHex(backColorNbr);
-		sculptureLightGeom.faces[2].color.setHex(backColorNbr);
-		sculptureLightGeom.faces[1].color.setHex(backColorNbr);
-		sculptureLightGeom.faces[0].color.setHex(backColorNbr);
-
-		var sculptureLight = new THREE.Mesh(sculptureLightGeom, sculptureLightMat);
-
-		sculptureLight.position = sculptureLightSrc.position;
-		sculptureLight.rotation = sculptureLightSrc.rotation;
-		sculptureLight.scale = sculptureLightSrc.scale;
-
-		scene.add(sculptureLight);
 	}
 
 
@@ -198,16 +236,27 @@
 	 * For performance reasons we only want to update values when the user actually changes parameters.
 	 */
 	function onParmsChange() {
-		// Update light
-		sculptureLightSrc.intensity = effectController.intensity * MAX_LIGHT_INTENSITY_NBR;
-
+		// Update lights
 		var newColor = new THREE.Color();
 		newColor.copy(OFF_LIGHT_CLR);
 		newColor.lerp(WARM_LIGHT_CLR, effectController.intensity);
 
-		sculptureLightGeom.faces[3].color.copy(newColor);
-		sculptureLightGeom.colorsNeedUpdate = true;
+		for (i = 0; i < sculptureLightSources.length; i++) {
+			sculptureLightSources[i].intensity = effectController.intensity * MAX_LIGHT_INTENSITY_NBR;
+
+			sculptureLightGeometries[i].faces[3].color.copy(newColor);
+			sculptureLightGeometries[i].colorsNeedUpdate = true;
+		}
 	}
+
+
+
+	function animate() {
+		// Rendering loop.
+		window.requestAnimationFrame(animate);
+		render();
+		stats.update();
+	};
 
 
 
