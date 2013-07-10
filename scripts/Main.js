@@ -19,8 +19,8 @@
 	 */
 	var CAM_TARGET_Y_COORD_NBR = 25;
 	var CAM_POS_Z_COORD_NBR = 175;
-	var SCULPTURE_ROW_CNT = 9, SCULPTURE_COL_CNT = 21, SCULPTURE_LIGHT_SRC_INTRVL_NBR = 5;
-	var SCULPTURE_LIGHT_WDTH_NBR = 5, SCULPTURE_LIGHT_HGHT_NBR = 5, SCULPTURE_LIGHT_DPTH_NBR = 0.5, SCULPTURE_LIGHT_MARGIN_NBR = 1;
+	var SCULPTURE_ROW_CNT = 15, SCULPTURE_COL_CNT = 35, SCULPTURE_LIGHT_SRC_INTRVL_NBR = 15;
+	var SCULPTURE_LIGHT_WDTH_NBR = 3, SCULPTURE_LIGHT_HGHT_NBR = 3, SCULPTURE_LIGHT_DPTH_NBR = 0.5, SCULPTURE_LIGHT_MARGIN_NBR = 1;
 	var SCULPTURE_LEFT_STRT_COORD_NBR = -(SCULPTURE_COL_CNT * (SCULPTURE_LIGHT_WDTH_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2 + SCULPTURE_LIGHT_MARGIN_NBR;
 	var SCULPTURE_FAR_STRT_COORD_NBR = -(SCULPTURE_ROW_CNT * (SCULPTURE_LIGHT_HGHT_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2 + SCULPTURE_LIGHT_MARGIN_NBR;
 	var SCALE = 1;
@@ -130,8 +130,10 @@
 
 		for (var i = 0; i < SCULPTURE_ROW_CNT; i++) {
 
+			/*
 			// Randomly select each row's starting height, height change increment, and height change direction (i.e., sloping up or down)
-			lightHeightNbr = (Math.random() * (MAX_LIGHT_HEIGHT_NBR - MIN_LIGHT_HEIGHT_NBR)) + MIN_LIGHT_HEIGHT_NBR;
+			lightHeightNbr = Math.sin((185 * i)/360) * 5 + MIN_LIGHT_HEIGHT_NBR;
+
 
 			if (Math.random() <= 0.49) {
 				lightHeightDirNbr = -1;
@@ -140,11 +142,12 @@
 			}
 
 			lightHeightChgIncrmntNbr = (Math.random() * MAX_LIGHT_HEIGHT_CHG_INCRMNT_NBR) + MIN_LIGHT_HEIGHT_CHG_INCRMNT_NBR;
-
+			*/
 
 			for (var j = 0; j < SCULPTURE_COL_CNT; j++) {
 				crteSculptureLight(i, j);
 
+				/*
 				lightHeightNbr += lightHeightDirNbr * lightHeightChgIncrmntNbr;
 
 				if (lightHeightNbr <= MIN_LIGHT_HEIGHT_NBR) {
@@ -152,6 +155,7 @@
 				} else if (lightHeightNbr >= MAX_LIGHT_HEIGHT_NBR) {
 					lightHeightDirNbr = -lightHeightDirNbr;
 				}
+				*/
 			}
 		}
 	}
@@ -190,6 +194,9 @@
 
 		var lightXCoordNbr = SCULPTURE_LEFT_STRT_COORD_NBR + (inpLightColIdx * (SCULPTURE_LIGHT_WDTH_NBR + SCULPTURE_LIGHT_MARGIN_NBR));
 		var lightZCoordNbr = SCULPTURE_FAR_STRT_COORD_NBR + (inpLightRowIdx * (SCULPTURE_LIGHT_HGHT_NBR + SCULPTURE_LIGHT_MARGIN_NBR));
+
+		// Randomly select each row's starting height, height change increment, and height change direction (i.e., sloping up or down)
+		lightHeightNbr = Math.sin(185 * (inpLightRowIdx + inpLightColIdx)/360) * 4 + MIN_LIGHT_HEIGHT_NBR;
 
 		lightSrc.position.set(lightXCoordNbr, lightHeightNbr, lightZCoordNbr);
 		lightSrc.width = 1;
