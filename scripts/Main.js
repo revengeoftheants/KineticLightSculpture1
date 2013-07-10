@@ -195,8 +195,13 @@
 		var lightXCoordNbr = SCULPTURE_LEFT_STRT_COORD_NBR + (inpLightColIdx * (SCULPTURE_LIGHT_WDTH_NBR + SCULPTURE_LIGHT_MARGIN_NBR));
 		var lightZCoordNbr = SCULPTURE_FAR_STRT_COORD_NBR + (inpLightRowIdx * (SCULPTURE_LIGHT_HGHT_NBR + SCULPTURE_LIGHT_MARGIN_NBR));
 
-		// Randomly select each row's starting height, height change increment, and height change direction (i.e., sloping up or down)
-		lightHeightNbr = Math.sin(185 * (inpLightRowIdx + inpLightColIdx)/360) * 4 + MIN_LIGHT_HEIGHT_NBR;
+
+		// Create a sine wave that transposes itself as the row number increases.
+		// To make a more organic shape (i.e., get rid of diagonal peaks and troughs), create another sine wave that is influenced more by the column number.
+		// Note: All of these numbers are rather arbitrary.
+		lightHeightNbr = (Math.sin(185 * ((inpLightRowIdx + inpLightColIdx) * 0.53)/360) * 3.3) + 
+						 (Math.sin(210 * ((inpLightRowIdx + (inpLightColIdx * 2.8)) * 0.45)/360) * 1.5) +
+						 MIN_LIGHT_HEIGHT_NBR;
 
 		lightSrc.position.set(lightXCoordNbr, lightHeightNbr, lightZCoordNbr);
 		lightSrc.width = 1;
