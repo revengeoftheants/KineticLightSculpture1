@@ -21,17 +21,18 @@
 	 */
 	var SCALE = 1;
 	var CAM_COORD_NBRS = {POSN_X: -140, POSN_Y: 5, POSN_Z: 90, target_X: 0, target_Y: 65, target_Z: 0};
-	var SCULPTURE_ROW_CNT = 15, SCULPTURE_COL_CNT = 38, SCULPTURE_LIGHT_SRC_INTRVL_NBR = 20;
+	var SCULPTURE_ROW_CNT = 15, SCULPTURE_COL_CNT = 38; 
+	var SCULPTURE_LIGHT_SRC_INTRVL_NBR = 55;  // Keep the number of lights low because they are expensive for the GPU to calculate
 	var SCULPTURE_LIGHT_WDTH_NBR = 3, SCULPTURE_LIGHT_HGHT_NBR = 3, SCULPTURE_LIGHT_DPTH_NBR = 0.5, SCULPTURE_LIGHT_MARGIN_NBR = 1;
 	var EMITTER_FACE_NBR = 3;
 	var SCULPTURE_LEFT_STRT_COORD_NBR = -(SCULPTURE_COL_CNT * (SCULPTURE_LIGHT_WDTH_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2 + SCULPTURE_LIGHT_MARGIN_NBR;
 	var SCULPTURE_FAR_STRT_COORD_NBR = -(SCULPTURE_ROW_CNT * (SCULPTURE_LIGHT_HGHT_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2 + SCULPTURE_LIGHT_MARGIN_NBR;
 	var LIGHT_CLRS = {ON: new THREE.Color(0xE5D9CA), OFF: new THREE.Color(0x090909)};   // ON: new THREE.Color(0xFFF1E0)
-	var MAX_LIGHT_INTENSITY_NBR = 2.2, START_LIGHT_INTENSITY_NBR = 0.00, DIRECT_LIGHT_INTENSITY_NBR = 0.14;
+	var MAX_LIGHT_INTENSITY_NBR = 3.0, START_LIGHT_INTENSITY_NBR = 0.00, DIRECT_LIGHT_INTENSITY_NBR = 0.14;
 	var MIN_LIGHT_HEIGHT_NBR = 65;
 
 	// For patterns
-	var PATTERN_NBRS = {MAX_SPEED: 15, MAX_INTENSITY_INCRMNT_RATIO: 1};
+	var PATTERN_NBRS = {MIN_SPEED: 2, MAX_SPEED: 7, MAX_INTENSITY_INCRMNT_RATIO: 0.1};
 	var PATTERN_ID_PROP_TXT = "patternId";
 	var BOX_MAX_NBRS = {HEIGHT: 100, WIDTH: 100, DEPTH: 100};
 
@@ -193,7 +194,7 @@
 
 		// Having many lights in a _scene is expensive so we will only add a light source at a certain interval.
 		if (lightIdx % SCULPTURE_LIGHT_SRC_INTRVL_NBR === 0) {
-			//_scene.add(lightSrc);
+			_scene.add(lightSrc);
 		}
 
 
@@ -290,7 +291,7 @@
 		thisPattern.position = new THREE.Vector3(xPosnNbr, yPosnNbr, zPosnNbr);
 
 		// Add a new property to the object
-		var xVelocity = Math.random() * PATTERN_NBRS.MAX_SPEED;
+		var xVelocity = rtrvRandomNbrInRng(PATTERN_NBRS.MIN_SPEED, PATTERN_NBRS.MAX_SPEED);
 		//var yVelocity = rtrvRandomPlusOrMinusOne() * Math.random() * PATTERN_NBRS.MAX_SPEED;
 		//var zVelocity = rtrvRandomPlusOrMinusOne() * Math.random() * PATTERN_NBRS.MAX_SPEED;
 		var yVelocity = 0, zVelocity = 0;
@@ -334,6 +335,15 @@
 
 		return rtnNbr;	
 	}
+
+
+
+	/*
+	 * Returns a random number within a given range.
+	 */
+	 function rtrvRandomNbrInRng(inpMinNbr, inpMaxNbr) {
+	 	return inpMinNbr + (Math.random() * (inpMaxNbr - inpMinNbr));
+	 }
 
 
 
@@ -388,7 +398,6 @@
 		// Update _camera
 		_cameraControls.update(delta);
 
-
 		// Change light intensities
 		animateLightIntensities();
 
@@ -424,8 +433,8 @@
 			calcVerticesInWorldCoords(thisPattern);
 
 
-			var patternLightIntensityEffectNbr;
 			var thisPatternPropIdTxt = PATTERN_ID_PROP_TXT + thisPattern.id.toString();
+
 
 			// Loop through all the lights to see if this pattern intersects each one
 			for (var idx = 0; idx < _sculptureLightGeometries.length; idx++) {
@@ -434,37 +443,15 @@
 				if (thisPattern.isPointInside(_sculptureLights[idx].position)) {
 
 					// Update this pattern's existing effect on this light.
-					if (thisLightGeom[thisPatternPropIdTxt] != "undefined") {
-						thisLightGeom[thisPatternPropIdTxt] = Math.ceil(1, thisLightGeom[thisPatternPropIdTxt] + thisPattern.lightIntensityRatioIncrmntNbr);
+					if (thisLightGeom[thisPatternPropIdTxt] === undefined) {
+						thisLightGeom[thisPatternPropIdTxt] = thisPattern.lightIntensityRatioIncrmntNbr;
 					} else {
-						thisLightGeom[thisPatternPropIdTxt] = 0;
+						thisLightGeom[thisPatternPropIdTxt] = Math.min(1, thisLightGeom[thisPatternPropIdTxt] + thisPattern.lightIntensityRatioIncrmntNbr);
 					}
 
-					/*
-					// Calculate the effect on the light's intensity ratio this pattern will have this round. The light's ratio cannot exceed 1.
-					patternLightIntensityEffectNbr = Math.floor(thisPattern.lightIntensityRatioIncrmntNbr,
-														   		1 - thisLightGeom.lightIntensityRatioNbr + thisLightGeom.lightIntensityRatioDeltaNbr 
-														   		- thisPattern.lightIntensityRatioIncrmntNbr);
-
-					// Ensure this effect is not negative.
-					patternLightIntensityEffectNbr = Math.ceil(patternLightIntensityEffectNbr, 0);
-
-					// Update the count of this pattern's effect on this light.
-					if (thisLightGeom["pattern" + thisPattern.id.toString()] != "undefined") {
-						// We have a property for this pattern ID already
-					} else {
-						thisLightGeom["pattern" + thisPattern.id.toString()] = 0;
-					}
-
-					thisLightGeom["pattern" + thisPattern.id.toString()] += patternLightIntensityEffectNbr;
-
-
-					// Update the light's new intensity ratio
-					thisLightGeom.lightIntensityRatioDeltaNbr += patternLightIntensityEffectNbr;
-					*/
 
 					// Keep those patterns which have affected a light or which are early in their lives.
-					if (newActivePatterns.indexOf(thisPattern) === -1 || thisPattern.renderLoopsCnt <= 20) {
+					if (newActivePatterns.indexOf(thisPattern) === -1 || thisPattern.renderLoopsCnt <= 15) {
 						newActivePatterns.push(thisPattern);
 					}
 				
@@ -473,23 +460,7 @@
 					// This light was previously touched by this pattern, so we must dim it accordingly.
 
 					// Update this pattern's existing effect on this light.
-					thisLightGeom[thisPatternPropIdTxt] = Math.ceil(0, thisLightGeom[thisPatternPropIdTxt] - thisPattern.lightIntensityRatioIncrmntNbr);
-					
-					/*
-					// Calculate the effect on the light's intensity ratio this pattern will have this round. The light's ratio cannot fall below 0.
-					patternLightIntensityEffectNbr = Math.floor(thisPattern.lightIntensityRatioIncrmntNbr,
-														   	   (thisLightGeom.lightIntensityRatioNbr + thisLightGeom.lightIntensityRatioDeltaNbr 
-														   		- thisPattern.lightIntensityRatioIncrmntNbr);
-
-					// Ensure this effect is not negative.
-					patternLightIntensityEffectNbr = Math.ceil(patternLightIntensityEffectNbr, 0);
-
-					// Update the count of this pattern's effect on this light.
-					thisLightGeom["pattern" + thisPattern.id.toString()] -= thisPattern.lightIntensityIncrmntNbr;
-
-					// Update the light's new intensity ratio
-					thisLightGeom.lightIntensityRatioDeltaNbr -= patternLightIntensityEffectNbr;
-					*/
+					thisLightGeom[thisPatternPropIdTxt] = Math.max(0, thisLightGeom[thisPatternPropIdTxt] - thisPattern.lightIntensityRatioIncrmntNbr);
 
 					// If this pattern's effect has been completely removed from the light, delete the pattern's property from it.
 					if (thisLightGeom[thisPatternPropIdTxt] <= 0) {
@@ -523,7 +494,7 @@
 
 					// If we hit the maximum ratio, we can stop accumulating.
 					if (intensityRatioNbr >= 1) {
-						intensityRatioNbr = Math.floor(1, intensityRatioNbr);
+						intensityRatioNbr = Math.min(1, intensityRatioNbr);
 						break;
 					}
 				}
