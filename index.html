@@ -10,9 +10,29 @@
 				margin: 0px;
 				overflow: hidden;
 			}
+
+			#container {
+				height: 800px;
+				width: 1200px;
+			}
+
+			#audioInfo {
+				position: absolute;
+				bottom: 8px;
+				right: 8px;
+				color: white;
+				font-family: Sans-Serif;
+				font-size: 14px;
+				text-decoration: none;
+			}
+
+			#soundcloudLogo {
+				margin-left: 12px;
+			}
 		</style>
 
 		<script type="text/javascript" src="scripts/libraries/jquery-1.8.3.min.js"></script>
+		<script type="text/javascript" src="scripts/libraries/soundmanager2-nodebug-jsmin.js"></script>
 		<script type="text/javascript" src="scripts/libraries/three.min.js"></script>
 		<script type="text/javascript" src="scripts/libraries/WebGLDeferredRenderer.js"></script>
 		<script type="text/javascript" src="scripts/libraries/ShaderDeferred.js"></script>
@@ -32,20 +52,27 @@
 		<script type="text/javascript" src="scripts/Main.js"></script>
 		<script type="text/javascript" src="scripts/Patterns.js"></script>
 		
-		<script type="text/javascript">
 
+		<script type="text/javascript">
 			var _renderer = null;
+
+			Main.InitAudio();
 
 			$(document).ready( function() {
 				var compatibleInd = Main.CheckCompatibility();
 
 				if (compatibleInd) {
-					Main.Init();
+					Main.InitScene();
 				}
 			});
 		</script>
 	</head>
 	<body>
-		<div id="container" style="height: 800px, width: 1200px"></div>
+		<div id="container">
+			<a id="audioInfo" href="https://soundcloud.com/ibibix/lusine-baffle-1">
+				<span>Lusine - "Baffle"</span>
+				<img id="soundcloudLogo" src="images/soundcloudLogo.png">
+			</a>
+		</div>
 	</body>
 </html>

@@ -20,9 +20,9 @@
 	 * Constants
 	 */
 	var SCALE = 1;
-	var CAM_COORD_NBRS = {POSN_X: -140, POSN_Y: 15, POSN_Z: 90, target_X: 0, target_Y: 65, target_Z: 0};
+	var CAM_NBRS = {POSN_X: -140, POSN_Y: 15, POSN_Z: 90, target_X: 0, target_Y: 65, target_Z: 0, FOV_ANGLE: 46, NEAR_PLANE: 1, FAR_PLANE: 5000};
 	var SCULPTURE_ROW_CNT = 15, SCULPTURE_COL_CNT = 38; 
-	var SCULPTURE_LIGHT_SRC_INTRVL_NBR = 25;  // Keep the number of lights low because they are expensive for the GPU to calculate
+	var SCULPTURE_LIGHT_SRC_INTRVL_NBR = 30;  // Keep the number of lights low because they are expensive for the GPU to calculate
 	var SCULPTURE_LIGHT_WDTH_NBR = 3, SCULPTURE_LIGHT_HGHT_NBR = 3, SCULPTURE_LIGHT_DPTH_NBR = 0.5, SCULPTURE_LIGHT_MARGIN_NBR = 1;
 	var EMITTER_FACE_NBR = 3;
 	var SCULPTURE_LEFT_STRT_COORD_NBR = -(SCULPTURE_COL_CNT * (SCULPTURE_LIGHT_WDTH_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2 + SCULPTURE_LIGHT_MARGIN_NBR;
@@ -31,10 +31,13 @@
 	var MAX_LIGHT_INTENSITY_NBR = 3.5, START_LIGHT_INTENSITY_NBR = 0.00, DIRECT_LIGHT_INTENSITY_NBR = 0.2;
 	var MIN_LIGHT_HEIGHT_NBR = 65;
 
+	var SOUNDCLOUD_TRACK_ID = 17889996;
+
 	// For patterns
-	var PATTERN_NBRS = {MIN_SPEED: 1.5, MAX_SPEED: 7, MAX_INTENSITY_INCRMNT_RATIO: 0.1};
+	var PATTERN_NBRS = {MIN_SPEED: 1.5, MAX_SPEED: 7, MAX_INTENSITY_INCRMNT_RATIO: 0.1, START_POSITION_ARC_RADIUS: 100};
 	var PATTERN_ID_PROP_TXT = "patternId";
-	var BOX_MAX_NBRS = {HEIGHT: 100, WIDTH: 100, DEPTH: 100};
+	var BOX_NBRS = {MIN_HEIGHT: 20, MIN_WIDTH: 20, MIN_DEPTH: 20, MAX_HEIGHT: 100, MAX_WIDTH: 100, MAX_DEPTH: 100};
+	var SPHERE_NBRS = {MIN_RADIUS: 25, MAX_RADIUS: 75};
 
 
 
@@ -54,6 +57,16 @@
 	/*
 	 * Public methods
 	 */
+
+
+	/*
+	 * Initializes SoundManager2, which needs to happen before the DOM is ready because that is when SM2 applies configuration and starts up.
+	 */
+	Main.InitAudio = function() {
+		soundManager.setup( { url: "", flashVersion: 9, debugFlash: false, debugMode: false, useHTML5Audio: true, preferFlash: false, flashLoadTimeout: 10000, useHighPerformance: true } );
+	};
+
+
 
 	/*
 	 * Determines if the user's browser and machine are WebGL-capable.
@@ -78,7 +91,7 @@
 	/*
 	 * Initializes the scene.
 	 */
-	Main.Init = function() {
+	Main.InitScene = function() {
 
 		try {
 			/*
@@ -100,6 +113,7 @@
 			addSceneObjs();
 			initPatterns();
 			initStats();
+			initAudio();
 			
 			
 			addContextLostListener();
@@ -150,11 +164,11 @@
 	 */
 
 	function initCameraAndScene() {
-		_camera = new THREE.PerspectiveCamera(46, _canvasWidth / _canvasHeight, 1, 1000);
-		_camera.position.set(CAM_COORD_NBRS.POSN_X, CAM_COORD_NBRS.POSN_Y, CAM_COORD_NBRS.POSN_Z);
+		_camera = new THREE.PerspectiveCamera(CAM_NBRS.FOV_ANGLE, _canvasWidth / _canvasHeight, CAM_NBRS.NEAR_PLANE, CAM_NBRS.FAR_PLANE);
+		_camera.position.set(CAM_NBRS.POSN_X, CAM_NBRS.POSN_Y, CAM_NBRS.POSN_Z);
 		//_scene.add(_camera);  // Do not need to add the _camera to the _scene if using EffectComposer.
 		_cameraControls = new THREE.OrbitAndPanControls(_camera, _renderer.domElement);
-		_cameraControls.target.set(CAM_COORD_NBRS.target_X, CAM_COORD_NBRS.target_Y, CAM_COORD_NBRS.target_Z);
+		_cameraControls.target.set(CAM_NBRS.target_X, CAM_NBRS.target_Y, CAM_NBRS.target_Z);
 
 		var startDirectionVect = new THREE.Vector3();
 		startDirectionVect.subVectors( _camera.position, _cameraControls.target );
@@ -293,6 +307,12 @@
 		backWall.receiveShadow = true;
 		_scene.add(backWall);
 
+		var frontWall = new THREE.Mesh(longWallGeom, concreteMat);
+		frontWall.position.set(0, 80/2, 300/2);
+		frontWall.rotation.y = Math.PI;
+		frontWall.receiveShadow = true;
+		_scene.add(frontWall);		
+
 		var shortWallGeom = new THREE.PlaneGeometry(300, 80);
 
 		var leftWall = new THREE.Mesh(shortWallGeom, concreteMat);
@@ -318,10 +338,46 @@
 
 
 	function initPatterns() {
-		// Box pattern
-		var thisPattern = crteRandomBoxPattern();
+		// Box 
+		_availablePatterns.push(crteRandomBoxPattern());
 
-		_availablePatterns.push(thisPattern);
+		// Sphere
+		_availablePatterns.push(crteRandomSpherePattern());
+	}
+
+
+
+	function initAudio() {
+		soundManager.onready( function() {loadSoundCloudTrack(); });
+	}
+
+
+
+	function loadSoundCloudTrack() {
+
+  		soundManager.stopAll();
+  		soundManager.destroySound('track');
+
+	    track = soundManager.createSound(
+		    {
+			    id: "track",
+			    url: "https://soundcloud.com/ibibix/lusine-baffle-1",
+			    usePeakData: false,
+			    useEQData: false  // True: enables frequency spectrum data
+		    }
+	    );
+	    
+	    loopSound("track", { volume: 100 });  
+	}
+
+
+
+	function loopSound(inpSoundId, inpOptions) {
+	// http://getsatisfaction.com/schillmania/topics/looping_tracks_in_soundmanager_2
+  		inpOptions.onfinish = function() { loopSound(inpSoundId, inpOptions); }; 
+  		window.setTimeout(function() {
+    		soundManager.play(inpSoundId, inpOptions);
+  		}, 1);
 	}
 
 
@@ -330,11 +386,18 @@
 	 * Creates a randomly sized and positioned 
 	 */
 	function crteRandomBoxPattern() {
-		var width = Math.max(1, Math.random() * BOX_MAX_NBRS.WIDTH);
-		var height = Math.max(1, Math.random() * BOX_MAX_NBRS.HEIGHT);
-		var depth = Math.max(1, Math.random() * BOX_MAX_NBRS.DEPTH);
+		var width = Math.max(BOX_NBRS.MIN_WIDTH, Math.random() * BOX_NBRS.MAX_WIDTH);
+		var height = Math.max(BOX_NBRS.MIN_HEIGHT, Math.random() * BOX_NBRS.MAX_HEIGHT);
+		var depth = Math.max(BOX_NBRS.MIN_DEPTH, Math.random() * BOX_NBRS.MAX_DEPTH);
 
 		return new BoxPattern(width, height, depth);
+	}
+
+
+
+	function crteRandomSpherePattern() {
+
+		return new SpherePattern(Math.max(SPHERE_NBRS.MIN_RADIUS, Math.random() * SPHERE_NBRS.MAX_RADIUS));
 	}
 
 
@@ -366,35 +429,70 @@
 
 
 	/*
-	 * Returns a random Z coordinate that exists within the bounds of the light scuplture.
+	 * Returns a random position along an arc around the sculpture.
 	 */
-	function rtrvRandomZCoordWithinSculpture() {
-		var zDstncFromCenterNbr = Math.random() * SCULPTURE_FAR_STRT_COORD_NBR;
-		
-		var zSideOfCenter = rtrvRandomPlusOrMinusOne();
+	function rtrvRandomPatternStartPos() {
+		// Get a number between PI/2 and 3PI/2.
+		//var randomRadianNbr = (Math.random() * Math.PI) + Math.PI/2;
+		var randomRadianNbr = Math.random() * 2 * Math.PI;
 
-		zDstncFromCenterNbr *= zSideOfCenter;
+		var xPosnNbr = PATTERN_NBRS.START_POSITION_ARC_RADIUS * Math.cos(randomRadianNbr);
+		var yPosnNbr = MIN_LIGHT_HEIGHT_NBR;  // We won't care about height for now.
+		var zPosnNbr = PATTERN_NBRS.START_POSITION_ARC_RADIUS * Math.sin(randomRadianNbr);
 
-		return SCULPTURE_FAR_STRT_COORD_NBR + zDstncFromCenterNbr;
+		return new THREE.Vector3(xPosnNbr, yPosnNbr, zPosnNbr);
+	}
+
+
+
+	/*
+	 * Returns a velocity for the pattern appropriate to its start position (i.e., directing it towards the sculpture)l
+	 */
+	function rtrvRandomPatternVelocity(inpStartPos) {
+		var unitCircleCosValNbr = inpStartPos.x / PATTERN_NBRS.START_POSITION_ARC_RADIUS;
+		var unitCircleSinValNbr = inpStartPos.z / PATTERN_NBRS.START_POSITION_ARC_RADIUS;
+
+		// Negate the unit circle values to get velocities that point towards the world center.
+		var xVelocityNbr = -unitCircleCosValNbr * rtrvRandomNbrInRng(PATTERN_NBRS.MIN_SPEED, PATTERN_NBRS.MAX_SPEED);
+		var yVelocityNbr = 0;  // We will not have vertical movement at this time.
+		var zVelocityNbr = -unitCircleSinValNbr * rtrvRandomNbrInRng(PATTERN_NBRS.MIN_SPEED, PATTERN_NBRS.MAX_SPEED);
+
+		return new THREE.Vector3(xVelocityNbr, yVelocityNbr, zVelocityNbr);
 	}
 
 
 
 	function addSceneObjs() {
-		var cube;
 		var cubeSizeLength = 10;
-		var goldColor = "#FFDF00";
+		//var goldColor = "0xFFDF00";
+		var orangeRed = "#E8D8AD";  // For some reason this doesn't work if you use "0x" notation...
 		var showFrame = true;
-		var wireMaterial = new THREE.MeshPhongMaterial( { color: goldColor, ambient: goldColor } );
+		var objMaterial = new THREE.MeshPhongMaterial( { color: orangeRed } );
 
 		var cubeGeometry = new THREE.CubeGeometry(cubeSizeLength, cubeSizeLength, cubeSizeLength);
 
-		cube = new THREE.Mesh( cubeGeometry, wireMaterial );
+		var cube = new THREE.Mesh( cubeGeometry, objMaterial );
 		cube.position.x = 20;
 		cube.position.y = cubeSizeLength / 2;
 		cube.position.z = 0;
 		cube.receiveShadow = true;
 		_scene.add(cube);
+
+
+		//var sphereRadiusNbr = 10;
+		//var sphereGeom = new THREE.SphereGeometry(sphereRadiusNbr, sphereRadiusNbr * 3, sphereRadiusNbr * 3, 0, Math.PI * 2, 0, Math.PI);
+		//var sphere = new THREE.Mesh(sphereGeom, objMaterial);
+		//sphere.position.set(0, sphereRadiusNbr * 2, 0);
+		//sphere.receiveShadow = true;
+		//_scene.add(sphere);
+
+		/* Note: TorusKnot does not seem to work with deferred rendering.
+		var torusKnotGeom = new THREE.TorusKnowGeometry(10, 8, 60, 10, 2, 3);
+		var torusKnot = new THREE.Mesh(torusKnotGeom, objMaterial);
+		torusKnot.position.set(0, 30, 0);
+		torusKnot.receiveShadow = true;
+		_scene.add(torusKnot);
+		*/
 	}
 
 
@@ -472,27 +570,23 @@
 	 * We do this so that we can concurrently run multiple versions of the same underlying pattern.
 	 */
 	function clonePatternWithRandomValues(inpPattern) {
-		var xPosnNbr = SCULPTURE_LEFT_STRT_COORD_NBR - 100;  // Start the pattern to the left of the lights
-		var yPosnNbr = MIN_LIGHT_HEIGHT_NBR;  // We won't care about height for now.
-		var zPosnNbr = rtrvRandomZCoordWithinSculpture();
-
-		var xVelocity = rtrvRandomNbrInRng(PATTERN_NBRS.MIN_SPEED, PATTERN_NBRS.MAX_SPEED);
-		//var yVelocity = rtrvRandomPlusOrMinusOne() * Math.random() * PATTERN_NBRS.MAX_SPEED;
-		//var zVelocity = rtrvRandomPlusOrMinusOne() * Math.random() * PATTERN_NBRS.MAX_SPEED;
-		var yVelocity = 0, zVelocity = 0;
 
 		_patternIdCnt++;
+
+		var startPosition = rtrvRandomPatternStartPos();
 
 		var rtnClone = {
 			id: _patternIdCnt,
 			isPointInside: inpPattern.isPointInside,
 			vertices: inpPattern.vertices,
-			position: new THREE.Vector3(xPosnNbr, yPosnNbr, zPosnNbr),
-			velocity: new THREE.Vector3(xVelocity, yVelocity, zVelocity),
+			position: startPosition,
+			velocity: rtrvRandomPatternVelocity(startPosition),
 			lightIntensityRatioIncrmntNbr: Math.random() * PATTERN_NBRS.MAX_INTENSITY_INCRMNT_RATIO,
 			renderLoopsCnt: 0,
 			matrixWorld: new THREE.Matrix4(),
-			worldVertices: []
+			worldVertices: [],
+			radius: (inpPattern.radius === undefined) ? 0 : inpPattern.radius,
+			radiusSquaredNbr: (inpPattern.radiusSquaredNbr === undefined) ? 0 : inpPattern.radiusSquaredNbr
 		};
 
 		return rtnClone;
@@ -673,7 +767,7 @@
    		window.cancelAnimationFrame(_animationFrameId);
 		
 		// Rebuild the scene.
-		Main.Init();
+		Main.InitScene();
 	}
 
 
