@@ -33,8 +33,15 @@
 		<script type="text/javascript" src="scripts/Patterns.js"></script>
 		
 		<script type="text/javascript">
+
+			var _renderer = null;
+
 			$(document).ready( function() {
-				Main.Init();
+				var compatibleInd = Main.CheckCompatibility();
+
+				if (compatibleInd) {
+					Main.Init();
+				}
 			});
 		</script>
 	</head>

@@ -20,19 +20,19 @@
 	 * Constants
 	 */
 	var SCALE = 1;
-	var CAM_COORD_NBRS = {POSN_X: -140, POSN_Y: 5, POSN_Z: 90, target_X: 0, target_Y: 65, target_Z: 0};
+	var CAM_COORD_NBRS = {POSN_X: -140, POSN_Y: 15, POSN_Z: 90, target_X: 0, target_Y: 65, target_Z: 0};
 	var SCULPTURE_ROW_CNT = 15, SCULPTURE_COL_CNT = 38; 
-	var SCULPTURE_LIGHT_SRC_INTRVL_NBR = 55;  // Keep the number of lights low because they are expensive for the GPU to calculate
+	var SCULPTURE_LIGHT_SRC_INTRVL_NBR = 25;  // Keep the number of lights low because they are expensive for the GPU to calculate
 	var SCULPTURE_LIGHT_WDTH_NBR = 3, SCULPTURE_LIGHT_HGHT_NBR = 3, SCULPTURE_LIGHT_DPTH_NBR = 0.5, SCULPTURE_LIGHT_MARGIN_NBR = 1;
 	var EMITTER_FACE_NBR = 3;
 	var SCULPTURE_LEFT_STRT_COORD_NBR = -(SCULPTURE_COL_CNT * (SCULPTURE_LIGHT_WDTH_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2 + SCULPTURE_LIGHT_MARGIN_NBR;
 	var SCULPTURE_FAR_STRT_COORD_NBR = -(SCULPTURE_ROW_CNT * (SCULPTURE_LIGHT_HGHT_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2 + SCULPTURE_LIGHT_MARGIN_NBR;
 	var LIGHT_CLRS = {ON: new THREE.Color(0xE5D9CA), OFF: new THREE.Color(0x090909)};   // ON: new THREE.Color(0xFFF1E0)
-	var MAX_LIGHT_INTENSITY_NBR = 3.0, START_LIGHT_INTENSITY_NBR = 0.00, DIRECT_LIGHT_INTENSITY_NBR = 0.14;
+	var MAX_LIGHT_INTENSITY_NBR = 3.5, START_LIGHT_INTENSITY_NBR = 0.00, DIRECT_LIGHT_INTENSITY_NBR = 0.2;
 	var MIN_LIGHT_HEIGHT_NBR = 65;
 
 	// For patterns
-	var PATTERN_NBRS = {MIN_SPEED: 2, MAX_SPEED: 7, MAX_INTENSITY_INCRMNT_RATIO: 0.1};
+	var PATTERN_NBRS = {MIN_SPEED: 1.5, MAX_SPEED: 7, MAX_INTENSITY_INCRMNT_RATIO: 0.1};
 	var PATTERN_ID_PROP_TXT = "patternId";
 	var BOX_MAX_NBRS = {HEIGHT: 100, WIDTH: 100, DEPTH: 100};
 
@@ -41,23 +41,99 @@
 	/*
 	 * Global variables
 	 */
-	var _camera, _scene, _renderer, _stats, _clock;
+	var _camera, _scene, _stats, _clock, _animationFrameId;
 	var	__cameraControls, _effectController, _eyeTargetScale;
 	var _canvasWidth = window.innerWidth, _canvasHeight = window.innerHeight;
 	var _sculptureLightsources = [], _sculptureLightGeometries = [], _sculptureLights = [];
 	var _lightHeightNbr, _lightHeightDirNbr, _lightHeightChgIncrmntNbr;
 	var _availablePatterns = [], _activePatterns = [];
+	var _patternIdCnt = 0;
+	var _debugCanvas;
 
 
 	/*
 	 * Public methods
 	 */
+
+	/*
+	 * Determines if the user's browser and machine are WebGL-capable.
+	 */
+	Main.CheckCompatibility = function() {
+		var compatibleInd = true;
+
+		var chromeInd = navigator.userAgent.toLowerCase().indexOf("chrome") > -1;
+  		if (chromeInd === false) {
+  			compatibleInd = false;
+    		alert("Please use Google Chrome.");
+    	}
+
+    	if (Detector.webgl === false) {
+    		Detector.addGetWebGLMessage();
+    	}
+
+    	return compatibleInd;
+	};
+
+
+	/*
+	 * Initializes the scene.
+	 */
 	Main.Init = function() {
 
-		// Renderer
+		try {
+			/*
+			_debugCanvas = WebGLDebugUtils.makeLostContextSimulatingCanvas(document.createElement('canvas'));
+			//debugCanvas.loseContextInNCalls(5);
+			window.addEventListener("mousedown", function() {
+										_debugCanvas.loseContext();
+										}, false);
+
+			var gl = _debugCanvas.getContext("experimental-webgl");
+			*/
+			
+			
+			initRenderer();
+			initCameraAndScene();
+			initLights();
+			initGUI();
+			addRoom();
+			addSceneObjs();
+			initPatterns();
+			initStats();
+			
+			
+			addContextLostListener();
+			addOnUnloadListener();
+
+			
+			$(window).load( function() {
+				animate();
+			});
+		} catch ( error ) {
+
+			$(container).innerHTML = "There was a problem with WebGL. Please reload the page.";
+		}
+	};
+
+
+
+	function initStats() {
+		_stats = new Stats();
+		_stats.domElement.style.position = "absolute";
+		_stats.domElement.style.top = "8px";
+		_stats.domElement.style.zIndex = 100;
+		container.appendChild(_stats.domElement);
+	}
+
+
+
+	function initRenderer() {
+
 		_renderer = new THREE.WebGLDeferredRenderer( { antialias: true, scale: SCALE, brightness: 5, tonemapping: THREE.FilmicOperator } );
-		//_renderer = new THREE.WebGL_renderer( { antialias: true, scale: SCALE } );
+		//_renderer = new THREE.WebGLRenderer( { antialias: true, scale: SCALE } );
+
 		_renderer.setSize(_canvasWidth, _canvasHeight);  // Cannot set size via constructor parameters for WebGL_renderer.
+
 		// Gamma correction
 		_renderer.gammaInput = true;
 		_renderer.gammaOutput = true;
@@ -66,56 +142,14 @@
 
 		var container = document.getElementById('container');
 		container.appendChild( _renderer.domElement );
-
-		// Stats
-		_stats = new Stats();
-		_stats.domElement.style.position = "absolute";
-		_stats.domElement.style.top = "8px";
-		_stats.domElement.style.zIndex = 100;
-		container.appendChild(_stats.domElement);
-
-
-		_scene = new THREE.Scene();
-
-		initCamera();
-		initLights();
-		initGUI();
-		addRoom();
-		
-		initPatterns();
-
-
-		var cube;
-		var cubeSizeLength = 10;
-		var goldColor = "#FFDF00";
-		var showFrame = true;
-		var wireMaterial = new THREE.MeshPhongMaterial( { color: goldColor, ambient: goldColor } );
-
-		var cubeGeometry = new THREE.CubeGeometry(cubeSizeLength, cubeSizeLength, cubeSizeLength);
-
-		cube = new THREE.Mesh( cubeGeometry, wireMaterial );
-		cube.position.x = -10;
-		cube.position.y = cubeSizeLength / 2;
-		cube.position.z = 0;
-		cube.receiveShadow = true;
-		_scene.add(cube);
-				
-
-		_clock = new THREE.Clock();
-
-		
-		$(window).load( function() {
-			animate();
-		});
-	};
-
+	}
 
 
 	/*
 	 * Private methods
 	 */
 
-	function initCamera() {
+	function initCameraAndScene() {
 		_camera = new THREE.PerspectiveCamera(46, _canvasWidth / _canvasHeight, 1, 1000);
 		_camera.position.set(CAM_COORD_NBRS.POSN_X, CAM_COORD_NBRS.POSN_Y, CAM_COORD_NBRS.POSN_Z);
 		//_scene.add(_camera);  // Do not need to add the _camera to the _scene if using EffectComposer.
@@ -125,6 +159,10 @@
 		var startDirectionVect = new THREE.Vector3();
 		startDirectionVect.subVectors( _camera.position, _cameraControls.target );
 		_eyeTargetScale = Math.tan(_camera.fov * (Math.PI/180)/2) * startDirectionVect.length();
+
+		_scene = new THREE.Scene();
+
+		_clock = new THREE.Clock();
 	}
 
 
@@ -184,8 +222,8 @@
 		// To make a more organic shape (i.e., get rid of diagonal peaks and troughs), create another sine wave that is influenced more by the column number.
 		// Note: All of these numbers are rather arbitrary.
 		_lightHeightNbr = (Math.sin(185 * ((inpLightRowIdx + inpLightColIdx) * 0.53)/360) * 3.3) + 
-						 (Math.sin(210 * ((inpLightRowIdx + (inpLightColIdx * 2.8)) * 0.45)/360) * 1.5) +
-						 MIN_LIGHT_HEIGHT_NBR;
+						  (Math.sin(210 * ((inpLightRowIdx + (inpLightColIdx * 2.8)) * 0.45)/360) * 1.5) +
+						  MIN_LIGHT_HEIGHT_NBR;
 
 		lightSrc.position.set(lightXCoordNbr, _lightHeightNbr, lightZCoordNbr);
 		lightSrc.width = 1;
@@ -283,26 +321,6 @@
 		// Box pattern
 		var thisPattern = crteRandomBoxPattern();
 
-		var xPosnNbr = SCULPTURE_LEFT_STRT_COORD_NBR - 100;  // Start the pattern to the left of the lights
-		var yPosnNbr = MIN_LIGHT_HEIGHT_NBR;  // We won't care about height for now.
-		var zPosnNbr = rtrvRandomZCoordWithinSculpture();
-
-		// Add a new property to the object
-		thisPattern.position = new THREE.Vector3(xPosnNbr, yPosnNbr, zPosnNbr);
-
-		// Add a new property to the object
-		var xVelocity = rtrvRandomNbrInRng(PATTERN_NBRS.MIN_SPEED, PATTERN_NBRS.MAX_SPEED);
-		//var yVelocity = rtrvRandomPlusOrMinusOne() * Math.random() * PATTERN_NBRS.MAX_SPEED;
-		//var zVelocity = rtrvRandomPlusOrMinusOne() * Math.random() * PATTERN_NBRS.MAX_SPEED;
-		var yVelocity = 0, zVelocity = 0;
-		thisPattern.velocity = new THREE.Vector3(xVelocity, yVelocity, zVelocity);
-
-		// Add new properties to the object
-		thisPattern.lightIntensityRatioIncrmntNbr = Math.random() * PATTERN_NBRS.MAX_INTENSITY_INCRMNT_RATIO;
-		thisPattern.renderLoopsCnt = 0;
-		thisPattern.matrixWorld = new THREE.Matrix4();
-		thisPattern.worldVertices = [];
-
 		_availablePatterns.push(thisPattern);
 	}
 
@@ -362,6 +380,25 @@
 
 
 
+	function addSceneObjs() {
+		var cube;
+		var cubeSizeLength = 10;
+		var goldColor = "#FFDF00";
+		var showFrame = true;
+		var wireMaterial = new THREE.MeshPhongMaterial( { color: goldColor, ambient: goldColor } );
+
+		var cubeGeometry = new THREE.CubeGeometry(cubeSizeLength, cubeSizeLength, cubeSizeLength);
+
+		cube = new THREE.Mesh( cubeGeometry, wireMaterial );
+		cube.position.x = 20;
+		cube.position.y = cubeSizeLength / 2;
+		cube.position.z = 0;
+		cube.receiveShadow = true;
+		_scene.add(cube);
+	}
+
+
+
 	/*
 	 * For performance reasons we only want to update values when the user actually changes parameters.
 	 */
@@ -385,7 +422,7 @@
 
 	function animate() {
 		// Rendering loop.
-		window.requestAnimationFrame(animate);
+		_animationFrameId = window.requestAnimationFrame(animate);
 		render();
 		_stats.update();
 	}
@@ -398,11 +435,67 @@
 		// Update _camera
 		_cameraControls.update(delta);
 
+		// Add a new light pattern at general intervals
+		if (_clock.getElapsedTime() % 2000 < 150) {
+			startRandomLightPattern();
+		}
+
 		// Change light intensities
 		animateLightIntensities();
 
+
+		if (_renderer.getContext().isContextLost()) {
+			console.log("Context lost!");
+		}
+
+
 		// Render
 		_renderer.render(_scene, _camera);
+	}
+
+
+	/*
+	 * Selects an available light pattern by random to start.
+	 */
+	function startRandomLightPattern() {
+
+		var selectedPattern = _availablePatterns[Math.floor(Math.random() * _availablePatterns.length)];
+
+		_activePatterns.push(clonePatternWithRandomValues(selectedPattern));
+	}
+
+
+
+	/*
+	 * Clones a pattern's necessary properties into a new object.
+	 *
+	 * We do this so that we can concurrently run multiple versions of the same underlying pattern.
+	 */
+	function clonePatternWithRandomValues(inpPattern) {
+		var xPosnNbr = SCULPTURE_LEFT_STRT_COORD_NBR - 100;  // Start the pattern to the left of the lights
+		var yPosnNbr = MIN_LIGHT_HEIGHT_NBR;  // We won't care about height for now.
+		var zPosnNbr = rtrvRandomZCoordWithinSculpture();
+
+		var xVelocity = rtrvRandomNbrInRng(PATTERN_NBRS.MIN_SPEED, PATTERN_NBRS.MAX_SPEED);
+		//var yVelocity = rtrvRandomPlusOrMinusOne() * Math.random() * PATTERN_NBRS.MAX_SPEED;
+		//var zVelocity = rtrvRandomPlusOrMinusOne() * Math.random() * PATTERN_NBRS.MAX_SPEED;
+		var yVelocity = 0, zVelocity = 0;
+
+		_patternIdCnt++;
+
+		var rtnClone = {
+			id: _patternIdCnt,
+			isPointInside: inpPattern.isPointInside,
+			vertices: inpPattern.vertices,
+			position: new THREE.Vector3(xPosnNbr, yPosnNbr, zPosnNbr),
+			velocity: new THREE.Vector3(xVelocity, yVelocity, zVelocity),
+			lightIntensityRatioIncrmntNbr: Math.random() * PATTERN_NBRS.MAX_INTENSITY_INCRMNT_RATIO,
+			renderLoopsCnt: 0,
+			matrixWorld: new THREE.Matrix4(),
+			worldVertices: []
+		};
+
+		return rtnClone;
 	}
 
 
@@ -411,16 +504,12 @@
 	 * Based on given patterns, changes the intensity of the sculptural lights.
 	 */
 	function animateLightIntensities() {
-		if (_clock.getElapsedTime() % 2000 < 50) {
-			var idx = Math.floor(Math.random() * _availablePatterns.length);
-
-			_activePatterns.push(_availablePatterns[idx]);
-		}
 
 		var newActivePatterns = [];
+		var idx, thisLightGeom;
 
 		// Process the active patterns to accumulate their effects on the lights
-		for (var idx = 0; idx < _activePatterns.length; idx++) {
+		for (idx = 0; idx < _activePatterns.length; idx++) {
 			var thisPattern = _activePatterns[idx];
 			thisPattern.renderLoopsCnt++;
 
@@ -437,8 +526,8 @@
 
 
 			// Loop through all the lights to see if this pattern intersects each one
-			for (var idx = 0; idx < _sculptureLightGeometries.length; idx++) {
-				var thisLightGeom = _sculptureLightGeometries[idx];
+			for (idx = 0; idx < _sculptureLightGeometries.length; idx++) {
+				thisLightGeom = _sculptureLightGeometries[idx];
 				// Determine if any points lie within the pattern
 				if (thisPattern.isPointInside(_sculptureLights[idx].position)) {
 
@@ -450,13 +539,12 @@
 					}
 
 
-					// Keep those patterns which have affected a light or which are early in their lives.
-					if (newActivePatterns.indexOf(thisPattern) === -1 || thisPattern.renderLoopsCnt <= 15) {
+					// Keep those patterns which have affected a light.
+					if (newActivePatterns.indexOf(thisPattern) === -1) {
 						newActivePatterns.push(thisPattern);
 					}
 				
-				} else if (thisLightGeom[thisPatternPropIdTxt] != undefined 
-						   && thisLightGeom[thisPatternPropIdTxt] > 0) {
+				} else if (thisLightGeom[thisPatternPropIdTxt] !== undefined && thisLightGeom[thisPatternPropIdTxt] > 0) {
 					// This light was previously touched by this pattern, so we must dim it accordingly.
 
 					// Update this pattern's existing effect on this light.
@@ -473,44 +561,52 @@
 					}
 				}
 			}
+
+			if (newActivePatterns.indexOf(thisPattern) === -1 && thisPattern.renderLoopsCnt <= 15) {
+				newActivePatterns.push(thisPattern);
+			}
 		}
+
+
+		if (newActivePatterns.length > 0) {
+			var newColor = new THREE.Color();
+
+			// Now process the lights, accumulating the effects of the patterns of each one.
+			for (idx = 0; idx < _sculptureLightGeometries.length; idx++) {
+
+				thisLightGeom = _sculptureLightGeometries[idx];
+				var intensityRatioNbr = 0;
+
+
+				// Accumulate the effects of this light's affecting patterns.
+				for (var prop in thisLightGeom) {
+					if (prop.indexOf(PATTERN_ID_PROP_TXT) > -1) {
+						intensityRatioNbr += thisLightGeom[prop];
+
+						// If we hit the maximum ratio, we can stop accumulating.
+						if (intensityRatioNbr >= 1) {
+							intensityRatioNbr = Math.min(1, intensityRatioNbr);
+							break;
+						}
+					}
+				}
+
+				thisLightGeom.lightIntensityRatioNbr = intensityRatioNbr;
+
+				// Update the emitter face color
+				newColor.copy(LIGHT_CLRS.OFF);
+				newColor.lerp(LIGHT_CLRS.ON, thisLightGeom.lightIntensityRatioNbr);
+				thisLightGeom.faces[EMITTER_FACE_NBR].color.copy(newColor);
+				thisLightGeom.colorsNeedUpdate = true;
+
+				// Update the area light's intensity
+				_sculptureLightsources[idx].intensity = thisLightGeom.lightIntensityRatioNbr * MAX_LIGHT_INTENSITY_NBR;
+			}
+		}
+
 
 		// Update our list of active patterns.
 		_activePatterns = newActivePatterns;
-
-		var newColor = new THREE.Color();
-
-		// Now process the lights, accumulating the effects of the patterns of each one.
-		for (var idx = 0; idx < _sculptureLightGeometries.length; idx++) {
-
-			var thisLightGeom = _sculptureLightGeometries[idx];
-			var intensityRatioNbr = 0;
-
-
-			// Accumulate the effects of this light's affecting patterns.
-			for (prop in thisLightGeom) {
-				if (prop.indexOf(PATTERN_ID_PROP_TXT) > -1) {
-					intensityRatioNbr += thisLightGeom[prop];
-
-					// If we hit the maximum ratio, we can stop accumulating.
-					if (intensityRatioNbr >= 1) {
-						intensityRatioNbr = Math.min(1, intensityRatioNbr);
-						break;
-					}
-				}
-			}
-
-			thisLightGeom.lightIntensityRatioNbr = intensityRatioNbr;
-
-			// Update the emitter face color
-			newColor.copy(LIGHT_CLRS.OFF);
-			newColor.lerp(LIGHT_CLRS.ON, thisLightGeom.lightIntensityRatioNbr);
-			thisLightGeom.faces[EMITTER_FACE_NBR].color.copy(newColor);
-			thisLightGeom.colorsNeedUpdate = true;
-
-			// Update the area light's intensity
-			_sculptureLightsources[idx].intensity = thisLightGeom.lightIntensityRatioNbr * MAX_LIGHT_INTENSITY_NBR;
-		}
 	}
 
 
@@ -546,6 +642,38 @@
 
 		_sculptureLightsources[9].position.setY(newHeightNbr);
 		_sculptureLights[9].position.setY(newHeightNbr);
+	}
+
+
+
+	function addContextLostListener() {
+		this._renderer.domElement.addEventListener("webglcontextlost", function(inpEvent) {
+			handleContextLost(inpEvent);
+		}, false);
+	}
+
+
+
+	function addOnUnloadListener() {
+		window.addEventListener("unload", function(inpEvent) {
+			//this._renderer.domElement.loseContext();
+		}, false);
+	}
+
+
+
+	/*
+	 * Handles the event of the WebGL context being lost.
+	 */
+	function handleContextLost(inpEvent) {
+		// By default when a WebGL program loses its context, it never gets that context back. Prevent this default behavior.
+   		inpEvent.preventDefault();
+
+   		// Turn off the rendering loop.
+   		window.cancelAnimationFrame(_animationFrameId);
+		
+		// Rebuild the scene.
+		Main.Init();
 	}
 
 

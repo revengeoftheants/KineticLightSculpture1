@@ -101,6 +101,15 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 
 	//
 
+	// KAD: Added this for debugging help.
+	_this.getContext = function () {
+
+		return gl;
+
+	};
+
+
+
 	var initDeferredMaterials = function ( object ) {
 
 		if ( object.material instanceof THREE.MeshFaceMaterial ) {
