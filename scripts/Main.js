@@ -370,7 +370,7 @@
 				usePeakData: false,
 				useEQData: false  // True: enables frequency spectrum data
 			}
-			);
+		);
 
 		loopSound("track", { volume: 100});  
 	}
@@ -538,6 +538,7 @@
 		// Update _camera
 		_cameraControls.update(delta);
 
+		
 		var currElapsedTm = _clock.getElapsedTime();
 
 		// Add a new light pattern at general intervals
@@ -545,11 +546,12 @@
 			if (_patternReleaseInd) {
 				startRandomLightPattern();
 			}
-		} else if (currElapsedTm - _prevPatternReleaseTm > 3 + (Math.random() * 2)) {
+		} else if (currElapsedTm - _prevPatternReleaseTm > 2.5 + (Math.random() * 2)) {
 			startRandomLightPattern(currElapsedTm);
 		}
+		
 
-		// Change light intensities
+		// Set new light intensities
 		animateLightIntensities();
 
 
@@ -681,40 +683,39 @@
 		}
 
 
-		if (newActivePatterns.length > 0) {
-			var newColor = new THREE.Color();
+		var newColor = new THREE.Color();
 
-			// Now process the lights, accumulating the effects of the patterns of each one.
-			for (idx = 0; idx < _sculptureLightGeometries.length; idx++) {
+		// Now process the lights, accumulating the effects of the patterns of each one.
+		// NOTE: You always want to perform this loop because it will ensure a light's intensity ratio number always gets set to 0.
+		for (idx = 0; idx < _sculptureLightGeometries.length; idx++) {
 
-				thisLightGeom = _sculptureLightGeometries[idx];
-				var intensityRatioNbr = 0;
+			thisLightGeom = _sculptureLightGeometries[idx];
+			var intensityRatioNbr = 0;
 
 
-				// Accumulate the effects of this light's affecting patterns.
-				for (var prop in thisLightGeom) {
-					if (prop.indexOf(PATTERN_ID_PROP_TXT) > -1) {
-						intensityRatioNbr += thisLightGeom[prop];
+			// Accumulate the effects of this light's affecting patterns.
+			for (var prop in thisLightGeom) {
+				if (prop.indexOf(PATTERN_ID_PROP_TXT) > -1) {
+					intensityRatioNbr += thisLightGeom[prop];
 
-						// If we hit the maximum ratio, we can stop accumulating.
-						if (intensityRatioNbr >= 1) {
-							intensityRatioNbr = Math.min(1, intensityRatioNbr);
-							break;
-						}
+					// If we hit the maximum ratio, we can stop accumulating.
+					if (intensityRatioNbr >= 1) {
+						intensityRatioNbr = Math.min(1, intensityRatioNbr);
+						break;
 					}
 				}
-
-				thisLightGeom.lightIntensityRatioNbr = intensityRatioNbr;
-
-				// Update the emitter face color
-				newColor.copy(LIGHT_CLRS.OFF);
-				newColor.lerp(LIGHT_CLRS.ON, thisLightGeom.lightIntensityRatioNbr);
-				thisLightGeom.faces[EMITTER_FACE_NBR].color.copy(newColor);
-				thisLightGeom.colorsNeedUpdate = true;
-
-				// Update the area light's intensity
-				_sculptureLightsources[idx].intensity = thisLightGeom.lightIntensityRatioNbr * MAX_LIGHT_INTENSITY_NBR;
 			}
+
+			thisLightGeom.lightIntensityRatioNbr = intensityRatioNbr;
+
+			// Update the emitter face color
+			newColor.copy(LIGHT_CLRS.OFF);
+			newColor.lerp(LIGHT_CLRS.ON, thisLightGeom.lightIntensityRatioNbr);
+			thisLightGeom.faces[EMITTER_FACE_NBR].color.copy(newColor);
+			thisLightGeom.colorsNeedUpdate = true;
+
+			// Update the area light's intensity
+			_sculptureLightsources[idx].intensity = thisLightGeom.lightIntensityRatioNbr * MAX_LIGHT_INTENSITY_NBR;
 		}
 
 
