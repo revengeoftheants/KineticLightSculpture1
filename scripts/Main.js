@@ -75,14 +75,12 @@
 	Main.CheckCompatibility = function() {
 		var compatibleInd = true;
 
-		var chromeInd = navigator.userAgent.toLowerCase().indexOf("chrome") > -1;
-		if (chromeInd === false) {
-			compatibleInd = false;
-			alert("Please use Google Chrome.");
-		}
-
 		if (Detector.webgl === false) {
 			Detector.addGetWebGLMessage();
+			compatibleInd = false;
+		} else if (Detector.chrome === false) {
+			Detector.addGetChromeMessage();
+			compatibleInd = false;
 		}
 
 		return compatibleInd;
