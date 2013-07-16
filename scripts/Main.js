@@ -19,7 +19,7 @@
 	 * Constants
 	 **********************/
 	var SCALE = 1;
-	var CAM_NBRS = {POSN_X: -140, POSN_Y: 15, POSN_Z: 90, target_X: 0, target_Y: 65, target_Z: 0, FOV_ANGLE: 46, NEAR_PLANE: 1, FAR_PLANE: 5000};
+	var CAM_NBRS = {POSN_X: -140, POSN_Y: 7, POSN_Z: 90, target_X: 0, target_Y: 45, target_Z: 0, FOV_ANGLE: 46, NEAR_PLANE: 1, FAR_PLANE: 5000};
 	var SCULPTURE_ROW_CNT = 15, SCULPTURE_COL_CNT = 38; 
 	var SCULPTURE_LIGHT_SRC_INTRVL_NBR = 34;  // Keep the number of lights low because they are expensive for the GPU to calculate
 	var SCULPTURE_LIGHT_WDTH_NBR = 3, SCULPTURE_LIGHT_HGHT_NBR = 3, SCULPTURE_LIGHT_DPTH_NBR = 0.5, SCULPTURE_LIGHT_MARGIN_NBR = 1;
@@ -53,6 +53,7 @@
 	var _patternIdCnt = 0;
 	var _patternReleaseInd = false;
 	var _prevPatternReleaseTm = 0;
+
 
 
 	/**********************
@@ -107,16 +108,15 @@
 			initRenderer();
 			initCameraAndScene();
 			initLights();
+			initStats();
 			initGUI();
 			addRoom();
 			addSceneObjs();
 			initPatterns();
-			initStats();
-			loadAudio();
+			initAudio();
 			
 			
 			addContextLostListener();
-			addOnUnloadListener();
 
 			
 			$(window).load( function() {
@@ -136,6 +136,9 @@
 	 **********************/
 
 
+	/*
+	 * Initializes the Stats window.
+	 */
 	function initStats() {
 		_stats = new Stats();
 		_stats.domElement.style.position = "absolute";
@@ -145,7 +148,9 @@
 	}
 
 
-
+	/*
+	 * Initializes the renderer.
+	 */
 	function initRenderer() {
 
 		_renderer = new THREE.WebGLDeferredRenderer( { antialias: true, scale: SCALE, brightness: 5, tonemapping: THREE.FilmicOperator } );
@@ -164,7 +169,9 @@
 	}
 
 
-
+	/*
+	 * Initializes the camera and scene.
+	 */
 	function initCameraAndScene() {
 		_camera = new THREE.PerspectiveCamera(CAM_NBRS.FOV_ANGLE, _canvasWidth / _canvasHeight, CAM_NBRS.NEAR_PLANE, CAM_NBRS.FAR_PLANE);
 		_camera.position.set(CAM_NBRS.POSN_X, CAM_NBRS.POSN_Y, CAM_NBRS.POSN_Z);
@@ -182,7 +189,9 @@
 	}
 
 
-
+	/*
+	 * Initializes all of the lights.
+	 */
 	function initLights() {
 		//AmbientLight is not currently supported in WebGLDeferred_renderer, so we are using a directional light instead.
 		//_scene.add(new THREE.AmbientLight(0xFFFFFF));
@@ -199,7 +208,9 @@
 	}
 
 
-
+	/*
+	 * Initializes the GUI pane.
+	 */
 	function initGUI() {
 		var gui = new dat.GUI();
 
@@ -290,7 +301,7 @@
 
 
 	/*
-	 * 
+	 * Creates the 3D space around the sculpture.
 	 */
 	function addRoom() {
 		var floorMap = THREE.ImageUtils.loadTexture( "textures/Ground_Concrete.jpg" );
@@ -338,13 +349,9 @@
 
 
 
-	function addEffects() {
-
-		//_renderer.addEffect(new THREE.BloomPass( 0.65 ));
-	}
-
-
-
+	/*
+	 * Initializes the patterns that will effect the sculpture lights.
+	 */
 	function initPatterns() {
 		// Box 
 		_availablePatterns.push(crteRandomBoxPattern());
@@ -355,7 +362,10 @@
 
 
 
-	function loadAudio() {
+	/*
+	 * Initializes the audio.
+	 */
+	function initAudio() {
 		soundManager.onready( function() {
 			loadSoundCloudTrack(); 
 		});
@@ -363,6 +373,9 @@
 
 
 
+	/*
+	 * Loads a SoundCloud track into SoundManager2.
+	 */
 	function loadSoundCloudTrack() {
 
 		soundManager.stopAll();
@@ -382,6 +395,9 @@
 
 
 
+	/*
+	 * Loops the audio track each time it finishes playing.
+	 */
 	function loopSound(inpSoundId, inpOptions) {
 		// http://getsatisfaction.com/schillmania/topics/looping_tracks_in_soundmanager_2
 
@@ -389,7 +405,10 @@
 		AudioAnalyzer.InitBeatRangeSamples();
 
 		inpOptions.onfinish = function() {
-			loopSound(inpSoundId, inpOptions); 
+			// You will only get eqData for a looped track if you destory and re-create it. This appears to be a problem in the source SoundManager2_SMSound_AS3.as.
+			// The eqData object that flash passes 
+			// http://stackoverflow.com/questions/11642556/soundcloud-soundmanager2-eqdata
+			loadSoundCloudTrack();
 		};
 
 		window.setTimeout(function() {
@@ -400,7 +419,7 @@
 
 
 	/*
-	 * Creates a randomly sized and positioned 
+	 * Creates a randomly sized box pattern.
 	 */
 	function crteRandomBoxPattern() {
 		var width = Math.max(BOX_NBRS.MIN_WIDTH, Math.random() * BOX_NBRS.MAX_WIDTH);
@@ -412,6 +431,9 @@
 
 
 
+	/*
+	 * Creates a randomly sized sphere pattern.
+	 */
 	function crteRandomSpherePattern() {
 
 		return new SpherePattern(Math.max(SPHERE_NBRS.MIN_RADIUS, Math.random() * SPHERE_NBRS.MAX_RADIUS));
@@ -420,7 +442,7 @@
 
 
 	/*
-	 * Randomly returns -1 or 1.
+	 * Returns -1 or 1 by random.
 	 */
 	function rtrvRandomPlusOrMinusOne() {
 		var rtnNbr;
@@ -473,12 +495,13 @@
 
 
 
+	/*
+	 * Adds additional objects to the scene.
+	 */
 	function addSceneObjs() {
 		var cubeSizeLength = 10;
-		//var goldColor = "0xFFDF00";
-		var orangeRed = "#E8D8AD";  // For some reason this doesn't work if you use "0x" notation...
 		var showFrame = true;
-		var objMaterial = new THREE.MeshPhongMaterial( { color: orangeRed } );
+		var objMaterial = new THREE.MeshPhongMaterial( { color: "#FFFFFF" } );
 
 		var cubeGeometry = new THREE.CubeGeometry(cubeSizeLength, cubeSizeLength, cubeSizeLength);
 
@@ -529,6 +552,9 @@
 
 
 
+	/*
+	 * Creates the animation loop.
+	 */
 	function animate() {
 		// Rendering loop.
 		_animationFrameId = window.requestAnimationFrame(animate);
@@ -538,6 +564,9 @@
 
 
 
+	/*
+	 * Renders the scene during each animation loop.
+	 */
 	function render() {
 		var delta = _clock.getDelta();
 		
@@ -771,17 +800,12 @@
 
 
 
+	/*
+	 * Adds a listener for the webglcontextlost event.
+	 */
 	function addContextLostListener() {
 		this._renderer.domElement.addEventListener("webglcontextlost", function(inpEvent) {
 			handleContextLost(inpEvent);
-		}, false);
-	}
-
-
-
-	function addOnUnloadListener() {
-		window.addEventListener("unload", function(inpEvent) {
-			//this._renderer.domElement.loseContext();
 		}, false);
 	}
 
@@ -815,8 +839,6 @@
 			} else {
 				_patternReleaseInd = false;
 			}
-
-			console.log(beatDetectNbr);
         }
 
         //(AudioAnalyzer.RtrvFallEqData(this.eqData));
