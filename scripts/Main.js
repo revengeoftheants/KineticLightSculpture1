@@ -21,7 +21,7 @@
 	var SCALE = 1;
 	var CAM_NBRS = {POSN_X: -140, POSN_Y: 15, POSN_Z: 90, target_X: 0, target_Y: 65, target_Z: 0, FOV_ANGLE: 46, NEAR_PLANE: 1, FAR_PLANE: 5000};
 	var SCULPTURE_ROW_CNT = 15, SCULPTURE_COL_CNT = 38; 
-	var SCULPTURE_LIGHT_SRC_INTRVL_NBR = 30;  // Keep the number of lights low because they are expensive for the GPU to calculate
+	var SCULPTURE_LIGHT_SRC_INTRVL_NBR = 34;  // Keep the number of lights low because they are expensive for the GPU to calculate
 	var SCULPTURE_LIGHT_WDTH_NBR = 3, SCULPTURE_LIGHT_HGHT_NBR = 3, SCULPTURE_LIGHT_DPTH_NBR = 0.5, SCULPTURE_LIGHT_MARGIN_NBR = 1;
 	var EMITTER_FACE_NBR = 3;
 	var SCULPTURE_LEFT_STRT_COORD_NBR = -(SCULPTURE_COL_CNT * (SCULPTURE_LIGHT_WDTH_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2 + SCULPTURE_LIGHT_MARGIN_NBR;
@@ -29,11 +29,12 @@
 	var LIGHT_CLRS = {ON: new THREE.Color(0xE5D9CA), OFF: new THREE.Color(0x090909)};   // ON: new THREE.Color(0xFFF1E0)
 	var MAX_LIGHT_INTENSITY_NBR = 3.5, START_LIGHT_INTENSITY_NBR = 0.00, DIRECT_LIGHT_INTENSITY_NBR = 0.2;
 	var MIN_LIGHT_HEIGHT_NBR = 65;
+	var ROOM_NBRS = {WIDTH: 800, DEPTH: 600, HEIGHT: 80};
 
 	var SOUNDCLOUD = {CLIENT_ID: "ace41127a1d0a4904d5e548447130eee", TRACK_ID: 17889996};
 
 	// For patterns
-	var PATTERN_NBRS = {MIN_SPEED: 1.5, MAX_SPEED: 7, MAX_INTENSITY_INCRMNT_RATIO: 0.1, START_POSITION_ARC_RADIUS: 100};
+	var PATTERN_NBRS = {MIN_SPEED: 1.5, MAX_SPEED: 7, MAX_SPEED_SCALE: 1.3, MAX_INTENSITY_INCRMNT_RATIO: 0.1, START_POSITION_ARC_RADIUS: 100, MAX_CNT: 10};
 	var PATTERN_ID_PROP_TXT = "patternId";
 	var BOX_NBRS = {MIN_HEIGHT: 20, MIN_WIDTH: 20, MIN_DEPTH: 20, MAX_HEIGHT: 100, MAX_WIDTH: 100, MAX_DEPTH: 100};
 	var SPHERE_NBRS = {MIN_RADIUS: 25, MAX_RADIUS: 75};
@@ -63,7 +64,7 @@
 	 * Initializes SoundManager2, which needs to happen before the DOM is ready because that is when SM2 applies configuration and starts up.
 	 */
 	Main.InitAudio = function() {
-		soundManager.setup( { url: "", flashVersion: 9, debugFlash: false, debugMode: false, useHTML5Audio: true, preferFlash: false, flashLoadTimeout: 10000, useHighPerformance: true } );
+		soundManager.setup( { url: "/flash/", flashVersion: 9, debugFlash: false, debugMode: false, useHTML5Audio: false, preferFlash: false, flashLoadTimeout: 10000, useHighPerformance: true } );
 	};
 
 
@@ -206,11 +207,13 @@
 
 		_effectController = {
 			intensity: START_LIGHT_INTENSITY_NBR,
-			audioControlsPattern: false
+			muteInd: false,
+			patternCnt: 5
 		};
 
-		gui.add(_effectController, "intensity", 0.00, 1.00).step(0.01).onChange(onParmsChange);
-		gui.add(_effectController, "audioControlsPattern");
+		//gui.add(_effectController, "intensity", 0.00, 1.00).step(0.01).onChange(onParmsChange);
+		gui.add(_effectController, "muteInd").name("No Music");
+		gui.add(_effectController, "patternCnt", 0, PATTERN_NBRS.MAX_CNT).step(1).name("Pattern Count");
 	}
 
 
@@ -294,43 +297,45 @@
 	function addRoom() {
 		var floorMap = THREE.ImageUtils.loadTexture( "textures/Ground_Concrete.jpg" );
 		floorMap.wrapS = floorMap.wrapT = THREE.RepeatWrapping;
-		floorMap.repeat.set(3, 3);
+		floorMap.repeat.set(Math.round(ROOM_NBRS.WIDTH/100), Math.round(ROOM_NBRS.DEPTH/100));
 		floorMap.anisotropy = 4;
 
 		// The lower the specular value is, the less shiny the material will be. The closer it is to the diffuse color, the more it will look like metal.
 		var concreteMat = new THREE.MeshPhongMaterial({color: 0x808080, ambient: 0xFFFFFF, specular: 0x141414, shininess: 05, map: floorMap, bumpMap: floorMap, bumpScale: 0.05});
-		var floor = new THREE.Mesh(new THREE.PlaneGeometry( 400, 300 ), concreteMat);
+		var floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_NBRS.WIDTH, ROOM_NBRS.DEPTH), concreteMat);
 		//floor.rotation.y = Math.PI;  // The repetition of the pattern is less obvious from the side.
 		floor.rotation.x = -Math.PI/2;
 		floor.receiveShadow = true;
 		_scene.add(floor);
 
-		var longWallGeom = new THREE.PlaneGeometry(400, 80);
+		/*
+		var longWallGeom = new THREE.PlaneGeometry(ROOM_NBRS.WIDTH, ROOM_NBRS.HEIGHT);
 		
 		var backWall = new THREE.Mesh(longWallGeom, concreteMat);
-		backWall.position.set(0, 80/2, -300/2);
+		backWall.position.set(0, ROOM_NBRS.HEIGHT/2, -ROOM_NBRS.DEPTH/2);
 		backWall.receiveShadow = true;
 		_scene.add(backWall);
 
 		var frontWall = new THREE.Mesh(longWallGeom, concreteMat);
-		frontWall.position.set(0, 80/2, 300/2);
+		frontWall.position.set(0, ROOM_NBRS.HEIGHT/2, ROOM_NBRS.DEPTH/2);
 		frontWall.rotation.y = Math.PI;
 		frontWall.receiveShadow = true;
 		_scene.add(frontWall);		
 
-		var shortWallGeom = new THREE.PlaneGeometry(300, 80);
+		var shortWallGeom = new THREE.PlaneGeometry(ROOM_NBRS.DEPTH, ROOM_NBRS.HEIGHT);
 
 		var leftWall = new THREE.Mesh(shortWallGeom, concreteMat);
-		leftWall.position.set(-400/2, 80/2, 0);
+		leftWall.position.set(-ROOM_NBRS.WIDTH/2, ROOM_NBRS.HEIGHT/2, 0);
 		leftWall.rotation.y = Math.PI/2;
 		leftWall.receiveShadow = true;
 		_scene.add(leftWall);
 
 		var rightWall = new THREE.Mesh(shortWallGeom, concreteMat);
-		rightWall.position.set(400/2, 80/2, 0);
+		rightWall.position.set(ROOM_NBRS.WIDTH/2, ROOM_NBRS.HEIGHT/2, 0);
 		rightWall.rotation.y = -Math.PI/2;
 		rightWall.receiveShadow = true;
 		_scene.add(rightWall);
+		*/
 	}
 
 
@@ -353,7 +358,9 @@
 
 
 	function loadAudio() {
-		soundManager.onready( function() {loadSoundCloudTrack(); });
+		soundManager.onready( function() {
+			loadSoundCloudTrack(); 
+		});
 	}
 
 
@@ -368,18 +375,25 @@
 				id: "track",
 				url: "http://api.soundcloud.com/tracks/" + SOUNDCLOUD.TRACK_ID + "/stream?client_id=" + SOUNDCLOUD.CLIENT_ID,
 				usePeakData: false,
-				useEQData: false  // True: enables frequency spectrum data
+				useEQData: true  // True: enables frequency spectrum data
 			}
 		);
 
-		loopSound("track", { volume: 100});  
+		loopSound("track", { volume: 100, whileplaying: handleEQData});  
 	}
 
 
 
 	function loopSound(inpSoundId, inpOptions) {
-	// http://getsatisfaction.com/schillmania/topics/looping_tracks_in_soundmanager_2
-		inpOptions.onfinish = function() { loopSound(inpSoundId, inpOptions); }; 
+		// http://getsatisfaction.com/schillmania/topics/looping_tracks_in_soundmanager_2
+
+		// Initialize the analyzer.
+		AudioAnalyzer.InitBeatRangeSamples();
+
+		inpOptions.onfinish = function() {
+			loopSound(inpSoundId, inpOptions); 
+		};
+
 		window.setTimeout(function() {
 			soundManager.play(inpSoundId, inpOptions);
 		}, 1);
@@ -425,15 +439,6 @@
 
 
 	/*
-	 * Returns a random number within a given range.
-	 */
-	function rtrvRandomNbrInRng(inpMinNbr, inpMaxNbr) {
-		return inpMinNbr + (Math.random() * (inpMaxNbr - inpMinNbr));
-	}
-
-
-
-	/*
 	 * Returns a random position along an arc around the sculpture.
 	 */
 	function rtrvRandomPatternStartPos() {
@@ -458,11 +463,14 @@
 		var unitCircleSinValNbr = inpStartPos.z / PATTERN_NBRS.START_POSITION_ARC_RADIUS;
 
 		// Negate the unit circle values to get velocities that point towards the world center.
-		var xVelocityNbr = -unitCircleCosValNbr * rtrvRandomNbrInRng(PATTERN_NBRS.MIN_SPEED, PATTERN_NBRS.MAX_SPEED);
+		var xVelocityNbr = -unitCircleCosValNbr * THREE.Math.randFloat(PATTERN_NBRS.MIN_SPEED, PATTERN_NBRS.MAX_SPEED);
 		var yVelocityNbr = 0;  // We will not have vertical movement at this time.
-		var zVelocityNbr = -unitCircleSinValNbr * rtrvRandomNbrInRng(PATTERN_NBRS.MIN_SPEED, PATTERN_NBRS.MAX_SPEED);
+		var zVelocityNbr = -unitCircleSinValNbr * THREE.Math.randFloat(PATTERN_NBRS.MIN_SPEED, PATTERN_NBRS.MAX_SPEED);
 
-		return new THREE.Vector3(xVelocityNbr, yVelocityNbr, zVelocityNbr);
+		var velocity = new THREE.Vector3(xVelocityNbr, yVelocityNbr, zVelocityNbr);
+
+		// Multiply by the pattern count so that the more patterns we have the faster they will go.
+		return velocity.multiplyScalar(THREE.Math.mapLinear(_effectController.patternCnt, 0, PATTERN_NBRS.MAX_CNT, 1, PATTERN_NBRS.MAX_SPEED_SCALE));
 	}
 
 
@@ -477,7 +485,7 @@
 		var cubeGeometry = new THREE.CubeGeometry(cubeSizeLength, cubeSizeLength, cubeSizeLength);
 
 		var cube = new THREE.Mesh( cubeGeometry, objMaterial );
-		cube.position.x = 20;
+		cube.position.x = 0;
 		cube.position.y = cubeSizeLength / 2;
 		cube.position.z = 0;
 		cube.receiveShadow = true;
@@ -538,15 +546,20 @@
 		// Update _camera
 		_cameraControls.update(delta);
 
+
+		// Update audio
+		AudioAnalyzer.SetMuteState(_effectController.muteInd);
+
 		
 		var currElapsedTm = _clock.getElapsedTime();
 
 		// Add a new light pattern at general intervals
-		if (_effectController.audioControlsPattern) {
+		if (_effectController.muteInd === false) {
 			if (_patternReleaseInd) {
-				startRandomLightPattern();
+				startRandomLightPattern(currElapsedTm);
 			}
-		} else if (currElapsedTm - _prevPatternReleaseTm > 2.5 + (Math.random() * 2)) {
+		//} else if (currElapsedTm - _prevPatternReleaseTm > 2 + (Math.random() * 2)) {  // Use this for a timed release
+		} else {
 			startRandomLightPattern(currElapsedTm);
 		}
 		
@@ -572,8 +585,8 @@
 	 */
 	function startRandomLightPattern(inpElapsedTm) {
 
-		// For now we will only allow one active pattern at a time.
-		if (_activePatterns.length === 0) {
+		// Limit the number of patterns active at any given time.
+		if (_activePatterns.length < _effectController.patternCnt) {
 			var selectedPattern = _availablePatterns[Math.floor(Math.random() * _availablePatterns.length)];
 
 			_activePatterns.push(clonePatternWithRandomValues(selectedPattern));
@@ -620,11 +633,11 @@
 	function animateLightIntensities() {
 
 		var newActivePatterns = [];
-		var idx, thisLightGeom;
+		var thisLightGeom;
 
 		// Process the active patterns to accumulate their effects on the lights
-		for (idx = 0; idx < _activePatterns.length; idx++) {
-			var thisPattern = _activePatterns[idx];
+		for (var patternIdx = 0; patternIdx < _activePatterns.length; patternIdx++) {
+			var thisPattern = _activePatterns[patternIdx];
 			thisPattern.renderLoopsCnt++;
 
 			// Translate the pattern.
@@ -640,10 +653,10 @@
 
 
 			// Loop through all the lights to see if this pattern intersects each one
-			for (idx = 0; idx < _sculptureLightGeometries.length; idx++) {
-				thisLightGeom = _sculptureLightGeometries[idx];
+			for (var lightIdx = 0; lightIdx < _sculptureLightGeometries.length; lightIdx++) {
+				thisLightGeom = _sculptureLightGeometries[lightIdx];
 				// Determine if any points lie within the pattern
-				if (thisPattern.isPointInside(_sculptureLights[idx].position)) {
+				if (thisPattern.isPointInside(_sculptureLights[lightIdx].position)) {
 
 					// Update this pattern's existing effect on this light.
 					if (thisLightGeom[thisPatternPropIdTxt] === undefined) {
@@ -796,10 +809,10 @@
      * Handler for SoundManager2's whilePlaying event. It fires this event after it takes its FFT samples.
      */
     function handleEQData() {
-        if (_effectController.audioControlsPattern) {
+        if (_effectController.muteInd === false) {
 			var beatDetectNbr = AudioAnalyzer.DetectBeat(this.eqData);
 
-			if (beatDetectNbr > 1) {
+			if (beatDetectNbr > 1.15) {  //Note: For Lusine's "Baffle", the first major beat is 1.21.
 				_patternReleaseInd = true;
 			} else {
 				_patternReleaseInd = false;

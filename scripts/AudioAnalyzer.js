@@ -34,11 +34,23 @@
     var _lowFreqBandSamplesIdx = 0;
     var _lowHurdleNbr = null;
     var _lowHurdleDecayNbr = 2;
+    var _prevMuteInd = false;
 
 
 
-    // Initialize our data
-    initBeatRangeSamples();
+
+        /*
+     * Initializes arrays for holding data about the low frequence bands, where the beat resides.
+     */
+    AudioAnalyzer.InitBeatRangeSamples = function() {
+        _lowFreqBandSamplesIdx = 0;
+
+        _lowFreqBandSamples = new Array(SAMPLE_CNT);
+
+        for (var idx = 0; idx < SAMPLE_CNT; idx++) {
+        _lowFreqBandSamples[idx] = new Array(LOW_FREQ_BAND_CNT);
+        }
+    }
 
 
 
@@ -72,6 +84,26 @@
 
         return currLvlNbr;
     };
+
+
+
+    /*
+     * Toggles the audio mute.
+     *
+     * @param inpMuteInd: Indicates whether or not audio should be muted.
+     */
+    AudioAnalyzer.SetMuteState = function(inpMuteInd) {
+
+        if (inpMuteInd != _prevMuteInd) {
+            if (inpMuteInd) {
+               soundManager.mute();
+            } else {
+                soundManager.unmute();
+            }
+        }
+
+        _prevMuteInd = inpMuteInd;
+    }
 
 
 
@@ -114,17 +146,6 @@
      * Private methods
      **********************/
 
-    /*
-     * Initializes arrays for holding data about the low frequence bands, where the beat resides.
-     */
-    function initBeatRangeSamples() {
-        _lowFreqBandSamples = new Array(SAMPLE_CNT);
-        for (var idx = 0; idx < SAMPLE_CNT; idx++) {
-        _lowFreqBandSamples[idx] = new Array(LOW_FREQ_BAND_CNT);
-        }
-    }
-
-
 
     /*
      * Updates the beat range.
@@ -135,7 +156,7 @@
         var sampleIdx = _lowFreqBandSamplesIdx % SAMPLE_CNT;
 
         for (var freqBandIdx = 0; freqBandIdx < LOW_FREQ_BAND_CNT; freqBandIdx++) {
-        _lowFreqBandSamples[sampleIdx][freqBandIdx] = Math.max(eqData.left[freqBandIdx], eqData.right[freqBandIdx]);
+        _lowFreqBandSamples[sampleIdx][freqBandIdx] = Math.max(inpEQData.left[freqBandIdx], inpEQData.right[freqBandIdx]);
         }
 
         _lowFreqBandSamplesIdx++;
@@ -172,18 +193,18 @@
 
         for (freqBandNbr = 0; freqBandNbr < LOW_FREQ_BAND_CNT; freqBandNbr++) {
 
-            var freqBandBelowAvgSampleCnt = 0, freqBandAboveAvgSampleCnt = 0;
-            var  minValFromAllSamples = _lowFreqBandSamples[0][freqBandNbr], maxValFromAllSamples = _lowFreqBandSamples[0][freqBandNbr], d = 0;
+            var freqBandBelowAvgSampleCnt = 0, freqBandAboveAvgSampleCnt = 0, distanceBetweenFreqBandSampleVals = 0;
+            var  minValFromAllSamples = _lowFreqBandSamples[0][freqBandNbr], maxValFromAllSamples = _lowFreqBandSamples[0][freqBandNbr];
 
             for (sampleIdx = 0; sampleIdx < sampleCnt; sampleIdx++) {
-                minValFromAllSamples = Math.min(min, _lowFreqBandSamples[sampleIdx][freqBandNbr]);
-                maxValFromAllSamples = Math.max(max, _lowFreqBandSamples[sampleIdx][freqBandNbr]);
+                minValFromAllSamples = Math.min(minValFromAllSamples, _lowFreqBandSamples[sampleIdx][freqBandNbr]);
+                maxValFromAllSamples = Math.max(maxValFromAllSamples, _lowFreqBandSamples[sampleIdx][freqBandNbr]);
 
                 if (sampleIdx > 1) {
                     distanceBetweenFreqBandSampleVals += Math.abs(_lowFreqBandSamples[sampleIdx - 1][freqBandNbr] - _lowFreqBandSamples[sampleIdx][freqBandNbr]); 
                 }
 
-                if (_lowFreqBandSamples[i][freqBandNbr] < freqBandAvgs[freqBandNbr]) {
+                if (_lowFreqBandSamples[sampleIdx][freqBandNbr] < freqBandAvgs[freqBandNbr]) {
                     freqBandBelowAvgSampleCnt++;
                 }
                 else {
