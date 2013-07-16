@@ -1,7 +1,6 @@
 /*
  * Creates a kinetic sculpture comprised of lights.
  *
- * The light glow effect is based on http://bkcore.com/blog/3d/webgl-three-js-animated-selective-glow.html.
  *
  * This uses a Self-Executing Anonymous Function to declare the namespace "Main" and create public and private members within in.
  *
@@ -12,13 +11,13 @@
  * @param Main: Defines the namespace to use for public members of this class.
  * @param $: The shorthand to use for jQuery.
  * @param undefined: Nothing should be passed via this parameter. This ensures that you can use "undefined" here without worrying that another loaded
- * 			  script as redefined the global variable "undefined".
+ *						script as redefined the global variable "undefined".
  */
 (function(Main, $, undefined) {
 
-	/*
+	/**********************
 	 * Constants
-	 */
+	 **********************/
 	var SCALE = 1;
 	var CAM_NBRS = {POSN_X: -140, POSN_Y: 15, POSN_Z: 90, target_X: 0, target_Y: 65, target_Z: 0, FOV_ANGLE: 46, NEAR_PLANE: 1, FAR_PLANE: 5000};
 	var SCULPTURE_ROW_CNT = 15, SCULPTURE_COL_CNT = 38; 
@@ -31,7 +30,7 @@
 	var MAX_LIGHT_INTENSITY_NBR = 3.5, START_LIGHT_INTENSITY_NBR = 0.00, DIRECT_LIGHT_INTENSITY_NBR = 0.2;
 	var MIN_LIGHT_HEIGHT_NBR = 65;
 
-	var SOUNDCLOUD_TRACK_ID = 17889996;
+	var SOUNDCLOUD = {CLIENT_ID: "ace41127a1d0a4904d5e548447130eee", TRACK_ID: 17889996};
 
 	// For patterns
 	var PATTERN_NBRS = {MIN_SPEED: 1.5, MAX_SPEED: 7, MAX_INTENSITY_INCRMNT_RATIO: 0.1, START_POSITION_ARC_RADIUS: 100};
@@ -41,9 +40,9 @@
 
 
 
-	/*
+	/**********************
 	 * Global variables
-	 */
+	 **********************/
 	var _camera, _scene, _stats, _clock, _animationFrameId;
 	var	__cameraControls, _effectController, _eyeTargetScale;
 	var _canvasWidth = window.innerWidth, _canvasHeight = window.innerHeight;
@@ -51,12 +50,13 @@
 	var _lightHeightNbr, _lightHeightDirNbr, _lightHeightChgIncrmntNbr;
 	var _availablePatterns = [], _activePatterns = [];
 	var _patternIdCnt = 0;
-	var _debugCanvas;
+	var _patternReleaseInd = false;
+	var _prevPatternReleaseTm = 0;
 
 
-	/*
+	/**********************
 	 * Public methods
-	 */
+	 **********************/
 
 
 	/*
@@ -75,16 +75,16 @@
 		var compatibleInd = true;
 
 		var chromeInd = navigator.userAgent.toLowerCase().indexOf("chrome") > -1;
-  		if (chromeInd === false) {
-  			compatibleInd = false;
-    		alert("Please use Google Chrome.");
-    	}
+		if (chromeInd === false) {
+			compatibleInd = false;
+			alert("Please use Google Chrome.");
+		}
 
-    	if (Detector.webgl === false) {
-    		Detector.addGetWebGLMessage();
-    	}
+		if (Detector.webgl === false) {
+			Detector.addGetWebGLMessage();
+		}
 
-    	return compatibleInd;
+		return compatibleInd;
 	};
 
 
@@ -113,7 +113,7 @@
 			addSceneObjs();
 			initPatterns();
 			initStats();
-			initAudio();
+			loadAudio();
 			
 			
 			addContextLostListener();
@@ -129,6 +129,12 @@
 		}
 	};
 
+
+
+
+	/**********************
+	 * Private methods
+	 **********************/
 
 
 	function initStats() {
@@ -159,9 +165,6 @@
 	}
 
 
-	/*
-	 * Private methods
-	 */
 
 	function initCameraAndScene() {
 		_camera = new THREE.PerspectiveCamera(CAM_NBRS.FOV_ANGLE, _canvasWidth / _canvasHeight, CAM_NBRS.NEAR_PLANE, CAM_NBRS.FAR_PLANE);
@@ -202,10 +205,12 @@
 		var gui = new dat.GUI();
 
 		_effectController = {
-			intensity: START_LIGHT_INTENSITY_NBR
+			intensity: START_LIGHT_INTENSITY_NBR,
+			audioControlsPattern: false
 		};
 
 		gui.add(_effectController, "intensity", 0.00, 1.00).step(0.01).onChange(onParmsChange);
+		gui.add(_effectController, "audioControlsPattern");
 	}
 
 
@@ -236,8 +241,8 @@
 		// To make a more organic shape (i.e., get rid of diagonal peaks and troughs), create another sine wave that is influenced more by the column number.
 		// Note: All of these numbers are rather arbitrary.
 		_lightHeightNbr = (Math.sin(185 * ((inpLightRowIdx + inpLightColIdx) * 0.53)/360) * 3.3) + 
-						  (Math.sin(210 * ((inpLightRowIdx + (inpLightColIdx * 2.8)) * 0.45)/360) * 1.5) +
-						  MIN_LIGHT_HEIGHT_NBR;
+							(Math.sin(210 * ((inpLightRowIdx + (inpLightColIdx * 2.8)) * 0.45)/360) * 1.5) +
+							MIN_LIGHT_HEIGHT_NBR;
 
 		lightSrc.position.set(lightXCoordNbr, _lightHeightNbr, lightZCoordNbr);
 		lightSrc.width = 1;
@@ -347,7 +352,7 @@
 
 
 
-	function initAudio() {
+	function loadAudio() {
 		soundManager.onready( function() {loadSoundCloudTrack(); });
 	}
 
@@ -355,29 +360,29 @@
 
 	function loadSoundCloudTrack() {
 
-  		soundManager.stopAll();
-  		soundManager.destroySound('track');
+		soundManager.stopAll();
+		soundManager.destroySound('track');
 
-	    track = soundManager.createSound(
-		    {
-			    id: "track",
-			    url: "https://soundcloud.com/ibibix/lusine-baffle-1",
-			    usePeakData: false,
-			    useEQData: false  // True: enables frequency spectrum data
-		    }
-	    );
-	    
-	    loopSound("track", { volume: 100 });  
+		track = soundManager.createSound(
+			{
+				id: "track",
+				url: "http://api.soundcloud.com/tracks/" + SOUNDCLOUD.TRACK_ID + "/stream?client_id=" + SOUNDCLOUD.CLIENT_ID,
+				usePeakData: false,
+				useEQData: false  // True: enables frequency spectrum data
+			}
+			);
+
+		loopSound("track", { volume: 100});  
 	}
 
 
 
 	function loopSound(inpSoundId, inpOptions) {
 	// http://getsatisfaction.com/schillmania/topics/looping_tracks_in_soundmanager_2
-  		inpOptions.onfinish = function() { loopSound(inpSoundId, inpOptions); }; 
-  		window.setTimeout(function() {
-    		soundManager.play(inpSoundId, inpOptions);
-  		}, 1);
+		inpOptions.onfinish = function() { loopSound(inpSoundId, inpOptions); }; 
+		window.setTimeout(function() {
+			soundManager.play(inpSoundId, inpOptions);
+		}, 1);
 	}
 
 
@@ -422,9 +427,9 @@
 	/*
 	 * Returns a random number within a given range.
 	 */
-	 function rtrvRandomNbrInRng(inpMinNbr, inpMaxNbr) {
-	 	return inpMinNbr + (Math.random() * (inpMaxNbr - inpMinNbr));
-	 }
+	function rtrvRandomNbrInRng(inpMinNbr, inpMaxNbr) {
+		return inpMinNbr + (Math.random() * (inpMaxNbr - inpMinNbr));
+	}
 
 
 
@@ -533,9 +538,15 @@
 		// Update _camera
 		_cameraControls.update(delta);
 
+		var currElapsedTm = _clock.getElapsedTime();
+
 		// Add a new light pattern at general intervals
-		if (_clock.getElapsedTime() % 2000 < 150) {
-			startRandomLightPattern();
+		if (_effectController.audioControlsPattern) {
+			if (_patternReleaseInd) {
+				startRandomLightPattern();
+			}
+		} else if (currElapsedTm - _prevPatternReleaseTm > 3 + (Math.random() * 2)) {
+			startRandomLightPattern(currElapsedTm);
 		}
 
 		// Change light intensities
@@ -554,12 +565,19 @@
 
 	/*
 	 * Selects an available light pattern by random to start.
+	 *
+	 * @param inpElapsedTm: The amount of time elapsed since the application began.
 	 */
-	function startRandomLightPattern() {
+	function startRandomLightPattern(inpElapsedTm) {
 
-		var selectedPattern = _availablePatterns[Math.floor(Math.random() * _availablePatterns.length)];
+		// For now we will only allow one active pattern at a time.
+		if (_activePatterns.length === 0) {
+			var selectedPattern = _availablePatterns[Math.floor(Math.random() * _availablePatterns.length)];
 
-		_activePatterns.push(clonePatternWithRandomValues(selectedPattern));
+			_activePatterns.push(clonePatternWithRandomValues(selectedPattern));
+
+			_prevPatternReleaseTm = inpElapsedTm;
+		}
 	}
 
 
@@ -648,7 +666,7 @@
 					if (thisLightGeom[thisPatternPropIdTxt] <= 0) {
 						delete thisLightGeom[thisPatternPropIdTxt];
 					} else {
-						// Keep those patterns which have affected a light or which are early in their lives.
+						// Keep those patterns which have affected a light.
 						if (newActivePatterns.indexOf(thisPattern) === -1) {
 							newActivePatterns.push(thisPattern);
 						}
@@ -656,6 +674,7 @@
 				}
 			}
 
+			// Keep a pattern if it didn't affect any lights but is still early in its life.
 			if (newActivePatterns.indexOf(thisPattern) === -1 && thisPattern.renderLoopsCnt <= 15) {
 				newActivePatterns.push(thisPattern);
 			}
@@ -761,14 +780,35 @@
 	 */
 	function handleContextLost(inpEvent) {
 		// By default when a WebGL program loses its context, it never gets that context back. Prevent this default behavior.
-   		inpEvent.preventDefault();
+		inpEvent.preventDefault();
 
-   		// Turn off the rendering loop.
-   		window.cancelAnimationFrame(_animationFrameId);
+		// Turn off the rendering loop.
+		window.cancelAnimationFrame(_animationFrameId);
 		
 		// Rebuild the scene.
 		Main.InitScene();
 	}
+
+
+
+    /*
+     * Handler for SoundManager2's whilePlaying event. It fires this event after it takes its FFT samples.
+     */
+    function handleEQData() {
+        if (_effectController.audioControlsPattern) {
+			var beatDetectNbr = AudioAnalyzer.DetectBeat(this.eqData);
+
+			if (beatDetectNbr > 1) {
+				_patternReleaseInd = true;
+			} else {
+				_patternReleaseInd = false;
+			}
+
+			console.log(beatDetectNbr);
+        }
+
+        //(AudioAnalyzer.RtrvFallEqData(this.eqData));
+    }
 
 
 } (window.Main = window.Main || {}, jQuery) );
