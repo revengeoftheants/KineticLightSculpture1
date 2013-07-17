@@ -82,7 +82,7 @@
 
         _lowHurdleNbr = currLvlNbr;
 
-        return currLvlNbr;
+        return (isNaN(currLvlNbr)) ? 0 : currLvlNbr;
     };
 
 

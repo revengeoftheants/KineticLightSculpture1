@@ -20,21 +20,21 @@
 	 **********************/
 	var SCALE = 1;
 	var CAM_NBRS = {POSN_X: -140, POSN_Y: 7, POSN_Z: 90, target_X: 0, target_Y: 45, target_Z: 0, FOV_ANGLE: 46, NEAR_PLANE: 1, FAR_PLANE: 5000};
-	var SCULPTURE_ROW_CNT = 15, SCULPTURE_COL_CNT = 38; 
-	var SCULPTURE_LIGHT_SRC_INTRVL_NBR = 34;  // Keep the number of lights low because they are expensive for the GPU to calculate
-	var SCULPTURE_LIGHT_WDTH_NBR = 3, SCULPTURE_LIGHT_HGHT_NBR = 3, SCULPTURE_LIGHT_DPTH_NBR = 0.5, SCULPTURE_LIGHT_MARGIN_NBR = 1;
-	var EMITTER_FACE_NBR = 3;
-	var SCULPTURE_LEFT_STRT_COORD_NBR = -(SCULPTURE_COL_CNT * (SCULPTURE_LIGHT_WDTH_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2 + SCULPTURE_LIGHT_MARGIN_NBR;
-	var SCULPTURE_FAR_STRT_COORD_NBR = -(SCULPTURE_ROW_CNT * (SCULPTURE_LIGHT_HGHT_NBR + SCULPTURE_LIGHT_MARGIN_NBR))/2 + SCULPTURE_LIGHT_MARGIN_NBR;
+	// Keep the number of lights low because they are expensive for the GPU to calculate
+	var LIGHT_NBRS = {ROWS: 15, COLS: 38, SRC_INTRVL: 34, WIDTH: 3, HEIGHT: 3, DEPTH: 0.5, MARGIN: 1, EMITTER_FACE: 3, MIN_HEIGHT: 65};
+	var LIGHTS_LEFT_STRT_COORD_NBR = -(LIGHT_NBRS.COLS * (LIGHT_NBRS.WIDTH + LIGHT_NBRS.MARGIN))/2 + LIGHT_NBRS.MARGIN;
+	var LIGHTS_FAR_STRT_COORD_NBR = -(LIGHT_NBRS.ROWS * (LIGHT_NBRS.HEIGHT + LIGHT_NBRS.MARGIN))/2 + LIGHT_NBRS.MARGIN;
 	var LIGHT_CLRS = {ON: new THREE.Color(0xE5D9CA), OFF: new THREE.Color(0x090909)};   // ON: new THREE.Color(0xFFF1E0)
-	var MAX_LIGHT_INTENSITY_NBR = 3.5, START_LIGHT_INTENSITY_NBR = 0.00, DIRECT_LIGHT_INTENSITY_NBR = 0.2;
-	var MIN_LIGHT_HEIGHT_NBR = 65;
+	var LIGHT_INTENSITY_NBRS = {START: 0.0, MAX: 3.5, HEMI: 0.2};
 	var ROOM_NBRS = {WIDTH: 800, DEPTH: 600, HEIGHT: 80};
+	var TORUS_KNOT_NBRS = {KNOT_RADIUS: 10, TUBE_RADIUS: 1.5, RADIAL_SEGMENTS: 11, TUBE_SEGMENTS: 8, COPRIME_INT_P: 2, COPRIME_INT_Q: 3};
+	var SCULPTURE_ROTATE_NBRS = {MAX_SPEED: 1.2, LERP_TM: 5, LERP_TM_MS: 5000};
+	var ROLLING_AVG_NBRS = {SAMPLES_CNT: 20};
 
 	var SOUNDCLOUD = {CLIENT_ID: "ace41127a1d0a4904d5e548447130eee", TRACK_ID: 17889996};
 
 	// For patterns
-	var PATTERN_NBRS = {MIN_SPEED: 1.5, MAX_SPEED: 7, MAX_SPEED_SCALE: 1.3, MAX_INTENSITY_INCRMNT_RATIO: 0.1, START_POSITION_ARC_RADIUS: 100, MAX_CNT: 10};
+	var PATTERN_NBRS = {MIN_SPEED: 1.5, MAX_SPEED: 7, MAX_SPEED_SCALE: 1.3, MAX_INTENSITY_INCRMNT_RATIO: 0.1, START_POSITION_ARC_RADIUS: 100, MAX_CNT: 8};
 	var PATTERN_ID_PROP_TXT = "patternId";
 	var BOX_NBRS = {MIN_HEIGHT: 20, MIN_WIDTH: 20, MIN_DEPTH: 20, MAX_HEIGHT: 100, MAX_WIDTH: 100, MAX_DEPTH: 100};
 	var SPHERE_NBRS = {MIN_RADIUS: 25, MAX_RADIUS: 75};
@@ -44,15 +44,17 @@
 	/**********************
 	 * Global variables
 	 **********************/
-	var _camera, _scene, _stats, _clock, _animationFrameId;
-	var	__cameraControls, _effectController, _eyeTargetScale;
+	var _camera, _scene, _stats, _clock, _delta, _animationFrameId;
+	var	_cameraControls, _effectController;
 	var _canvasWidth = window.innerWidth, _canvasHeight = window.innerHeight;
-	var _sculptureLightsources = [], _sculptureLightGeometries = [], _sculptureLights = [];
+	var _lightSources = [], _lightGeoms = [], _lights = [];
 	var _lightHeightNbr, _lightHeightDirNbr, _lightHeightChgIncrmntNbr;
 	var _availablePatterns = [], _activePatterns = [];
-	var _patternIdCnt = 0;
-	var _patternReleaseInd = false;
-	var _prevPatternReleaseTm = 0;
+	var _patternIdCnt = 0, _patternReleaseInd = false, _prevPatternReleaseTm = 0;
+	var _torusKnot;
+	var _sculptureRotateInd = false, _sculpturePrevRotationTm = 0, _sculptureRotateEndTm = 0, _sculptureElapsedRotationDstncNbr = 0, _sculptureElapsedLerpTm = 0;
+	var _rollingAvgBeatLvLs = [ROLLING_AVG_NBRS.SAMPLES_CNT], _rollingAvgBeatLvlNbr = 0;
+	var _audioTrack;
 
 
 
@@ -115,8 +117,8 @@
 			initPatterns();
 			initAudio();
 			
-			
 			addContextLostListener();
+			_rollingAvgBeatLvLs = initArray(_rollingAvgBeatLvLs, 0);
 
 			
 			$(window).load( function() {
@@ -181,7 +183,6 @@
 
 		var startDirectionVect = new THREE.Vector3();
 		startDirectionVect.subVectors( _camera.position, _cameraControls.target );
-		_eyeTargetScale = Math.tan(_camera.fov * (Math.PI/180)/2) * startDirectionVect.length();
 
 		_scene = new THREE.Scene();
 
@@ -196,12 +197,12 @@
 		//AmbientLight is not currently supported in WebGLDeferred_renderer, so we are using a directional light instead.
 		//_scene.add(new THREE.AmbientLight(0xFFFFFF));
 
-		var directionalLight = new THREE.HemisphereLight(LIGHT_CLRS.ON.getHex(), LIGHT_CLRS.ON.getHex(), DIRECT_LIGHT_INTENSITY_NBR);
+		var directionalLight = new THREE.HemisphereLight(LIGHT_CLRS.ON.getHex(), LIGHT_CLRS.ON.getHex(), LIGHT_INTENSITY_NBRS.HEMI);
 		_scene.add(directionalLight);
 
-		for (var i = 0; i < SCULPTURE_ROW_CNT; i++) {
+		for (var i = 0; i < LIGHT_NBRS.ROWS; i++) {
 
-			for (var j = 0; j < SCULPTURE_COL_CNT; j++) {
+			for (var j = 0; j < LIGHT_NBRS.COLS; j++) {
 				crteSculptureLight(i, j);
 			}
 		}
@@ -215,9 +216,9 @@
 		var gui = new dat.GUI();
 
 		_effectController = {
-			intensity: START_LIGHT_INTENSITY_NBR,
+			intensity: LIGHT_INTENSITY_NBRS.START,
 			muteInd: false,
-			patternCnt: 5
+			patternCnt: 3
 		};
 
 		//gui.add(_effectController, "intensity", 0.00, 1.00).step(0.01).onChange(onParmsChange);
@@ -234,10 +235,10 @@
 	 */
 	function crteSculptureLight(inpLightRowIdx, inpLightColIdx) {
 
-		var lightIdx = inpLightRowIdx * SCULPTURE_COL_CNT + inpLightColIdx;
+		var lightIdx = inpLightRowIdx * LIGHT_NBRS.COLS + inpLightColIdx;
 
-		var lightSrc = new THREE.AreaLight(LIGHT_CLRS.ON.getHex(), START_LIGHT_INTENSITY_NBR);
-		_sculptureLightsources[lightIdx] = lightSrc;
+		var lightSrc = new THREE.AreaLight(LIGHT_CLRS.ON.getHex(), LIGHT_INTENSITY_NBRS.START);
+		_lightSources[lightIdx] = lightSrc;
 		//lightSrc = new THREE.SpotLight(LIGHT_CLRS.ON.getHex(), sculptureLightIntensityNbr, 250);
 		lightSrc.angle = Math.PI/2;  // Should not go past PI/2.
 		lightSrc.castShadow = true;
@@ -245,8 +246,8 @@
 		lightSrc.shadow_cameraFov = 130;  // Default is 50.
 		lightSrc.shadow_cameraVisible = false;  // Does not apply to WebGLDeferred_renderer.
 
-		var lightXCoordNbr = SCULPTURE_LEFT_STRT_COORD_NBR + (inpLightColIdx * (SCULPTURE_LIGHT_WDTH_NBR + SCULPTURE_LIGHT_MARGIN_NBR));
-		var lightZCoordNbr = SCULPTURE_FAR_STRT_COORD_NBR + (inpLightRowIdx * (SCULPTURE_LIGHT_HGHT_NBR + SCULPTURE_LIGHT_MARGIN_NBR));
+		var lightXCoordNbr = LIGHTS_LEFT_STRT_COORD_NBR + (inpLightColIdx * (LIGHT_NBRS.WIDTH + LIGHT_NBRS.MARGIN));
+		var lightZCoordNbr = LIGHTS_FAR_STRT_COORD_NBR + (inpLightRowIdx * (LIGHT_NBRS.HEIGHT + LIGHT_NBRS.MARGIN));
 
 
 		// Create a sine wave that transposes itself as the row number increases.
@@ -254,7 +255,7 @@
 		// Note: All of these numbers are rather arbitrary.
 		_lightHeightNbr = (Math.sin(185 * ((inpLightRowIdx + inpLightColIdx) * 0.53)/360) * 3.3) + 
 							(Math.sin(210 * ((inpLightRowIdx + (inpLightColIdx * 2.8)) * 0.45)/360) * 1.5) +
-							MIN_LIGHT_HEIGHT_NBR;
+							LIGHT_NBRS.MIN_HEIGHT;
 
 		lightSrc.position.set(lightXCoordNbr, _lightHeightNbr, lightZCoordNbr);
 		lightSrc.width = 1;
@@ -262,7 +263,7 @@
 
 
 		// Having many lights in a _scene is expensive so we will only add a light source at a certain interval.
-		if (lightIdx % SCULPTURE_LIGHT_SRC_INTRVL_NBR === 0) {
+		if (lightIdx % LIGHT_NBRS.SRC_INTRVL === 0) {
 			_scene.add(lightSrc);
 		}
 
@@ -270,8 +271,8 @@
 		// Ideally we would just use the same geometry for each light, but since we want to be able to alter the color of each light independently,
 		// we will create an independent geometry for each. NOTE: The optimal solution would probably be to create one geometry for the 5-sided case
 		// of each light and then just create unique plane geometries for each light.
-		var sculptureLightGeom = new THREE.CubeGeometry(SCULPTURE_LIGHT_WDTH_NBR, SCULPTURE_LIGHT_DPTH_NBR, SCULPTURE_LIGHT_HGHT_NBR);
-		_sculptureLightGeometries[lightIdx] = sculptureLightGeom;
+		var sculptureLightGeom = new THREE.CubeGeometry(LIGHT_NBRS.WIDTH, LIGHT_NBRS.DEPTH, LIGHT_NBRS.HEIGHT);
+		_lightGeoms[lightIdx] = sculptureLightGeom;
 
 		// Setting vertexColors = FaceColors allows you to set the color of each face independently.
 		// NOTE: Set the mesh ambient and diffuse colors to the full intensity of the lights they represent; otherwise, they will not glow.
@@ -288,7 +289,7 @@
 
 
 		var sculptureLight = new THREE.Mesh(sculptureLightGeom, sculptureLightMat);
-		_sculptureLights[lightIdx] = sculptureLight;
+		_lights[lightIdx] = sculptureLight;
 
 		sculptureLight.position = lightSrc.position;
 		sculptureLight.rotation = lightSrc.rotation;
@@ -379,9 +380,9 @@
 	function loadSoundCloudTrack() {
 
 		soundManager.stopAll();
-		soundManager.destroySound('track');
+		soundManager.destroySound("track");
 
-		track = soundManager.createSound(
+		_audioTrack = soundManager.createSound(
 			{
 				id: "track",
 				url: "http://api.soundcloud.com/tracks/" + SOUNDCLOUD.TRACK_ID + "/stream?client_id=" + SOUNDCLOUD.CLIENT_ID,
@@ -390,7 +391,7 @@
 			}
 		);
 
-		loopSound("track", { volume: 100, whileplaying: handleEQData});  
+		loopSound({ volume: 100, whileplaying: handleEQData});  
 	}
 
 
@@ -398,7 +399,7 @@
 	/*
 	 * Loops the audio track each time it finishes playing.
 	 */
-	function loopSound(inpSoundId, inpOptions) {
+	function loopSound(inpOptions) {
 		// http://getsatisfaction.com/schillmania/topics/looping_tracks_in_soundmanager_2
 
 		// Initialize the analyzer.
@@ -412,7 +413,7 @@
 		};
 
 		window.setTimeout(function() {
-			soundManager.play(inpSoundId, inpOptions);
+			_audioTrack.play(inpOptions);
 		}, 1);
 	}
 
@@ -467,7 +468,7 @@
 		var randomRadianNbr = Math.random() * 2 * Math.PI;
 
 		var xPosnNbr = PATTERN_NBRS.START_POSITION_ARC_RADIUS * Math.cos(randomRadianNbr);
-		var yPosnNbr = MIN_LIGHT_HEIGHT_NBR;  // We won't care about height for now.
+		var yPosnNbr = LIGHT_NBRS.MIN_HEIGHT;  // We won't care about height for now.
 		var zPosnNbr = PATTERN_NBRS.START_POSITION_ARC_RADIUS * Math.sin(randomRadianNbr);
 
 		return new THREE.Vector3(xPosnNbr, yPosnNbr, zPosnNbr);
@@ -499,34 +500,35 @@
 	 * Adds additional objects to the scene.
 	 */
 	function addSceneObjs() {
-		var cubeSizeLength = 10;
+		var boxWidthNbr = 10;
+		var boxHeightNbr = boxWidthNbr + boxWidthNbr/4;
 		var showFrame = true;
-		var objMaterial = new THREE.MeshPhongMaterial( { color: "#FFFFFF" } );
 
-		var cubeGeometry = new THREE.CubeGeometry(cubeSizeLength, cubeSizeLength, cubeSizeLength);
+		// The lower the specular value is, the less shiny the material will be. The closer it is to the diffuse color, the more it will look like metal.
+		var boxMat = new THREE.MeshPhongMaterial( { color: "#FFFFFF", ambient: "#FFFFFF", specular: "#FFFFFF", shininess: 10} );		
 
-		var cube = new THREE.Mesh( cubeGeometry, objMaterial );
-		cube.position.x = 0;
-		cube.position.y = cubeSizeLength / 2;
-		cube.position.z = 0;
-		cube.receiveShadow = true;
-		_scene.add(cube);
+		var boxGeom = new THREE.CubeGeometry(boxWidthNbr, boxHeightNbr, boxWidthNbr);
+
+		var box = new THREE.Mesh(boxGeom, boxMat);
+		box.position.x = 0;
+		box.position.y = boxHeightNbr/2;
+		box.position.z = 0;
+		box.receiveShadow = true;
+		_scene.add(box);
 
 
-		//var sphereRadiusNbr = 10;
-		//var sphereGeom = new THREE.SphereGeometry(sphereRadiusNbr, sphereRadiusNbr * 3, sphereRadiusNbr * 3, 0, Math.PI * 2, 0, Math.PI);
-		//var sphere = new THREE.Mesh(sphereGeom, objMaterial);
-		//sphere.position.set(0, sphereRadiusNbr * 2, 0);
-		//sphere.receiveShadow = true;
-		//_scene.add(sphere);
+		//Note: The 5th and 6th parameters must be coprime; otherwise, the result will be a torus link.
+		var torusKnotGeom = new THREE.TorusKnotGeometry(TORUS_KNOT_NBRS.KNOT_RADIUS, TORUS_KNOT_NBRS.TUBE_RADIUS,
+														TORUS_KNOT_NBRS.RADIAL_SEGMENTS, TORUS_KNOT_NBRS.TUBE_SEGMENTS, 
+														TORUS_KNOT_NBRS.COPRIME_INT_P, TORUS_KNOT_NBRS.COPRIME_INT_Q);
 
-		/* Note: TorusKnot does not seem to work with deferred rendering.
-		var torusKnotGeom = new THREE.TorusKnowGeometry(10, 8, 60, 10, 2, 3);
-		var torusKnot = new THREE.Mesh(torusKnotGeom, objMaterial);
-		torusKnot.position.set(0, 30, 0);
-		torusKnot.receiveShadow = true;
-		_scene.add(torusKnot);
-		*/
+		var torusKnotMat = new THREE.MeshPhongMaterial( { color: "#FFFFFF", ambient: "#FFFFFF", specular: "#FFFFFF", shininess: 10} );
+
+		_torusKnot = new THREE.Mesh(torusKnotGeom, torusKnotMat);
+		_torusKnot.position.set(0, 30, 0);
+		_torusKnot.receiveShadow = true;
+		_scene.add(_torusKnot);
+		
 	}
 
 
@@ -541,11 +543,11 @@
 		newColor.lerp(LIGHT_CLRS.ON, _effectController.intensity);
 
 
-		for (i = 0; i < _sculptureLightsources.length; i++) {
-			_sculptureLightsources[i].intensity = _effectController.intensity * MAX_LIGHT_INTENSITY_NBR;
+		for (i = 0; i < _lightSources.length; i++) {
+			_lightSources[i].intensity = _effectController.intensity * LIGHT_INTENSITY_NBRS.MAX;
 
-			_sculptureLightGeometries[i].faces[EMITTER_FACE_NBR].color.copy(newColor);
-			_sculptureLightGeometries[i].colorsNeedUpdate = true;
+			_lightGeoms[i].faces[LIGHT_NBRS.EMITTER_FACE].color.copy(newColor);
+			_lightGeoms[i].colorsNeedUpdate = true;
 		}
 		
 	}
@@ -568,10 +570,10 @@
 	 * Renders the scene during each animation loop.
 	 */
 	function render() {
-		var delta = _clock.getDelta();
+		_delta = _clock.getDelta();
 		
 		// Update _camera
-		_cameraControls.update(delta);
+		_cameraControls.update(_delta);
 
 
 		// Update audio
@@ -593,6 +595,12 @@
 
 		// Set new light intensities
 		animateLightIntensities();
+
+
+		// Rotate the sculpture underneath the lights
+		if (_sculptureRotateInd) {
+			rotateSculpture();
+		}
 
 
 		if (_renderer.getContext().isContextLost()) {
@@ -680,10 +688,10 @@
 
 
 			// Loop through all the lights to see if this pattern intersects each one
-			for (var lightIdx = 0; lightIdx < _sculptureLightGeometries.length; lightIdx++) {
-				thisLightGeom = _sculptureLightGeometries[lightIdx];
+			for (var lightIdx = 0; lightIdx < _lightGeoms.length; lightIdx++) {
+				thisLightGeom = _lightGeoms[lightIdx];
 				// Determine if any points lie within the pattern
-				if (thisPattern.isPointInside(_sculptureLights[lightIdx].position)) {
+				if (thisPattern.isPointInside(_lights[lightIdx].position)) {
 
 					// Update this pattern's existing effect on this light.
 					if (thisLightGeom[thisPatternPropIdTxt] === undefined) {
@@ -727,9 +735,9 @@
 
 		// Now process the lights, accumulating the effects of the patterns of each one.
 		// NOTE: You always want to perform this loop because it will ensure a light's intensity ratio number always gets set to 0.
-		for (idx = 0; idx < _sculptureLightGeometries.length; idx++) {
+		for (idx = 0; idx < _lightGeoms.length; idx++) {
 
-			thisLightGeom = _sculptureLightGeometries[idx];
+			thisLightGeom = _lightGeoms[idx];
 			var intensityRatioNbr = 0;
 
 
@@ -751,11 +759,11 @@
 			// Update the emitter face color
 			newColor.copy(LIGHT_CLRS.OFF);
 			newColor.lerp(LIGHT_CLRS.ON, thisLightGeom.lightIntensityRatioNbr);
-			thisLightGeom.faces[EMITTER_FACE_NBR].color.copy(newColor);
+			thisLightGeom.faces[LIGHT_NBRS.EMITTER_FACE].color.copy(newColor);
 			thisLightGeom.colorsNeedUpdate = true;
 
 			// Update the area light's intensity
-			_sculptureLightsources[idx].intensity = thisLightGeom.lightIntensityRatioNbr * MAX_LIGHT_INTENSITY_NBR;
+			_lightSources[idx].intensity = thisLightGeom.lightIntensityRatioNbr * LIGHT_INTENSITY_NBRS.MAX;
 		}
 
 
@@ -778,13 +786,13 @@
 
 
 	/*
-	 * Physically changes location of the sculptural lights.
+	 * Alters the location of the sculptural lights.
 	 */
 	function transformLights() {
 
 		// Some starter code...
 		var heightChgNbr = (0.001 * _clock.getElapsedTime()) % 15;
-		var newHeightNbr = _sculptureLightsources[9].position.y + (heightChgNbr * heightChgDirectionNbr);
+		var newHeightNbr = _lightSources[9].position.y + (heightChgNbr * heightChgDirectionNbr);
 
 		if (newHeightNbr <= 35) {
 			newHeightNbr = 35;
@@ -794,8 +802,57 @@
 			heightChgDirectionNbr = -heightChgDirectionNbr;
 		}
 
-		_sculptureLightsources[9].position.setY(newHeightNbr);
-		_sculptureLights[9].position.setY(newHeightNbr);
+		_lightSources[9].position.setY(newHeightNbr);
+		_lights[9].position.setY(newHeightNbr);
+	}
+
+
+	/*
+	 * Rotates the sculpture.
+	 */
+	function rotateSculpture() {
+
+		var currTm = _clock.getElapsedTime();
+		var rotateSpeedNbr;
+		var trackPositionMs = (_audioTrack && _audioTrack.position) ? _audioTrack.position : 0;
+		var trackDurationMs = (_audioTrack && _audioTrack.duration) ? _audioTrack.duration : 0;
+		var trackRemainingMs = trackDurationMs - trackPositionMs;
+
+		// If we don't start rotating immediately upon startup, we have to account for that; otherwise, the first rotation won't be smooth.
+		if (_sculpturePrevRotationTm === 0) {
+			_sculpturePrevRotationTm = currTm;
+		}
+
+		if (trackRemainingMs <= SCULPTURE_ROTATE_NBRS.LERP_TM_MS) {
+			rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, trackRemainingMs/SCULPTURE_ROTATE_NBRS.LERP_TM_MS);
+
+			console.log("currTm: " + currTm + " startTm: " + _sculpturePrevRotationTm + " speed: " + rotateSpeedNbr);
+		} else {
+			// Add an extra fraction of a second so that we are sure to get a positive rotation speed upon rotation startup.
+			_sculptureElapsedLerpTm += currTm - _sculpturePrevRotationTm + 0.001;
+			rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, _sculptureElapsedLerpTm/SCULPTURE_ROTATE_NBRS.LERP_TM);
+		}
+
+		_torusKnot.useQuaternion = true;
+		var quat = new THREE.Quaternion();
+
+		// Note: We don't want to calculate distance directly from the overall elapsed time because that doesn't work when we went to decelerate
+		// the rotation at the end of the audio track. We would end up multiplying a large number (the overall elapsed time) by a smaller number
+		// than we had been using, thus leading to jerkiness. So we first calculate the interval distance and then add it to the overall distance.
+		_sculptureElapsedRotationDstncNbr += (currTm - _sculpturePrevRotationTm) * rotateSpeedNbr;
+		quat.setFromAxisAngle( new THREE.Vector3(0, 0.8, 0.2), _sculptureElapsedRotationDstncNbr);
+
+		quat.normalize();  // Normalize the quaternion or else you will get a distorted shape.
+		_torusKnot.quaternion = quat;
+
+		_sculpturePrevRotationTm = currTm;
+
+		if (rotateSpeedNbr === 0) {
+			// Initialize these values so that they are ready for the next time rotation starts up.
+			_sculptureRotateInd = false;
+			_sculpturePrevRotationTm = 0;
+			_sculptureElapsedLerpTm = 0;
+		}
 	}
 
 
@@ -836,12 +893,68 @@
 
 			if (beatDetectNbr > 1.15) {  //Note: For Lusine's "Baffle", the first major beat is 1.21.
 				_patternReleaseInd = true;
+				_sculptureRotateInd = true;
 			} else {
 				_patternReleaseInd = false;
 			}
+
+			_rollingAvgBeatLvlNbr = calcBeatLvlRollingAvg(beatDetectNbr);
         }
 
         //(AudioAnalyzer.RtrvFallEqData(this.eqData));
+    }
+
+
+
+    /*
+     * Sets all the entries in the input array to the input value.
+     */
+    function initArray(inpArray, inpVal) {
+		var idx = 0;
+
+		while (idx < inpArray.length) {
+			inpArray[idx] = inpVal;
+			idx++;
+		}
+
+		return inpArray;
+    }
+
+
+    /*
+     * Calculates the rolling average of beat levels.
+     *
+     * @param inpNewBeatLvlNbr: The new beat level number to include in the average.
+     *
+     * @returns A float.
+     */
+    function calcBeatLvlRollingAvg(inpNewBeatLvlNbr) {
+		_rollingAvgBeatLvLs.shift();
+		_rollingAvgBeatLvLs.push(inpNewBeatLvlNbr);
+
+		var sumNbr = 0;
+
+		for (var idx = 0; idx < _rollingAvgBeatLvLs.length; idx++) {
+			sumNbr += _rollingAvgBeatLvLs[idx];
+		}
+
+		return sumNbr/_rollingAvgBeatLvLs.length;
+	}
+
+
+
+    /*
+     * Linearly interpolates between two numbers.
+     *
+     * @param inpStartNbr: The number to start from.
+     * @param inpEndNbr: The number to end at.
+     * @param inpRatio: The ratio between the two number.
+     *
+     * @returns A float.
+     */
+    function calcLerp(inpStartNbr, inpEndNbr, inpPercent) {
+
+		return inpStartNbr + (THREE.Math.clamp(inpPercent, 0, 1) * (inpEndNbr - inpStartNbr));
     }
 
 
