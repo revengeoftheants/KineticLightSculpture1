@@ -28,7 +28,7 @@
 	var LIGHT_INTENSITY_NBRS = {START: 0.0, MAX: 3.5, HEMI: 0.2};
 	var ROOM_NBRS = {WIDTH: 800, DEPTH: 600, HEIGHT: 80};
 	var TORUS_KNOT_NBRS = {KNOT_RADIUS: 10, TUBE_RADIUS: 1.5, RADIAL_SEGMENTS: 11, TUBE_SEGMENTS: 8, COPRIME_INT_P: 2, COPRIME_INT_Q: 3};
-	var SCULPTURE_ROTATE_NBRS = {MAX_SPEED: 1.2, LERP_TM: 5, LERP_TM_MS: 5000};
+	var SCULPTURE_ROTATE_NBRS = {MAX_SPEED: 1, LERP_TM: 5, LERP_TM_MS: 5000};
 	var ROLLING_AVG_NBRS = {SAMPLES_CNT: 20};
 
 	var SOUNDCLOUD = {CLIENT_ID: "ace41127a1d0a4904d5e548447130eee", TRACK_ID: 17889996};
@@ -44,7 +44,7 @@
 	/**********************
 	 * Global variables
 	 **********************/
-	var _camera, _scene, _stats, _clock, _delta, _animationFrameId;
+	var _camera, _scene, _stats, _clock, _delta, _currTm, _animationFrameId;
 	var	_cameraControls, _effectController;
 	var _canvasWidth = window.innerWidth, _canvasHeight = window.innerHeight;
 	var _lightSources = [], _lightGeoms = [], _lights = [];
@@ -52,7 +52,7 @@
 	var _availablePatterns = [], _activePatterns = [];
 	var _patternIdCnt = 0, _patternReleaseInd = false, _prevPatternReleaseTm = 0;
 	var _torusKnot;
-	var _sculptureRotateInd = false, _sculpturePrevRotationTm = 0, _sculptureRotateEndTm = 0, _sculptureElapsedRotationDstncNbr = 0, _sculptureElapsedLerpTm = 0;
+	var _sculptureRotateInd = false, _sculptureElapsedRotationDstncNbr = 0, _sculptureElapsedLerpTm = 0;
 	var _rollingAvgBeatLvLs = [ROLLING_AVG_NBRS.SAMPLES_CNT], _rollingAvgBeatLvlNbr = 0;
 	var _audioTrack;
 
@@ -571,9 +571,10 @@
 	 */
 	function render() {
 		_delta = _clock.getDelta();
+		_currTm = _clock.getElapsedTime();
 		
 		// Update _camera
-		_cameraControls.update(_delta);
+		_cameraControls.update();
 
 
 		// Update audio
@@ -812,24 +813,16 @@
 	 */
 	function rotateSculpture() {
 
-		var currTm = _clock.getElapsedTime();
 		var rotateSpeedNbr;
 		var trackPositionMs = (_audioTrack && _audioTrack.position) ? _audioTrack.position : 0;
 		var trackDurationMs = (_audioTrack && _audioTrack.duration) ? _audioTrack.duration : 0;
 		var trackRemainingMs = trackDurationMs - trackPositionMs;
 
-		// If we don't start rotating immediately upon startup, we have to account for that; otherwise, the first rotation won't be smooth.
-		if (_sculpturePrevRotationTm === 0) {
-			_sculpturePrevRotationTm = currTm;
-		}
-
 		if (trackRemainingMs <= SCULPTURE_ROTATE_NBRS.LERP_TM_MS) {
 			rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, trackRemainingMs/SCULPTURE_ROTATE_NBRS.LERP_TM_MS);
-
-			console.log("currTm: " + currTm + " startTm: " + _sculpturePrevRotationTm + " speed: " + rotateSpeedNbr);
 		} else {
 			// Add an extra fraction of a second so that we are sure to get a positive rotation speed upon rotation startup.
-			_sculptureElapsedLerpTm += currTm - _sculpturePrevRotationTm + 0.001;
+			_sculptureElapsedLerpTm += _delta + 0.001;
 			rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, _sculptureElapsedLerpTm/SCULPTURE_ROTATE_NBRS.LERP_TM);
 		}
 
@@ -839,18 +832,16 @@
 		// Note: We don't want to calculate distance directly from the overall elapsed time because that doesn't work when we went to decelerate
 		// the rotation at the end of the audio track. We would end up multiplying a large number (the overall elapsed time) by a smaller number
 		// than we had been using, thus leading to jerkiness. So we first calculate the interval distance and then add it to the overall distance.
-		_sculptureElapsedRotationDstncNbr += (currTm - _sculpturePrevRotationTm) * rotateSpeedNbr;
+		_sculptureElapsedRotationDstncNbr += _delta * rotateSpeedNbr;
 		quat.setFromAxisAngle( new THREE.Vector3(0, 0.8, 0.2), _sculptureElapsedRotationDstncNbr);
 
 		quat.normalize();  // Normalize the quaternion or else you will get a distorted shape.
 		_torusKnot.quaternion = quat;
 
-		_sculpturePrevRotationTm = currTm;
 
 		if (rotateSpeedNbr === 0) {
 			// Initialize these values so that they are ready for the next time rotation starts up.
 			_sculptureRotateInd = false;
-			_sculpturePrevRotationTm = 0;
 			_sculptureElapsedLerpTm = 0;
 		}
 	}
