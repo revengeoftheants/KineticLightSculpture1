@@ -69,6 +69,11 @@ THREE.OrbitAndPanControls = function ( object, domElement ) {
 	var STATE = { NONE : -1, ROTATE : 0, DOLLY : 1, PAN : 2, TOUCH_ROTATE : 3, TOUCH_DOLLY : 4, TOUCH_PAN : 5 };
 	var state = STATE.NONE;
 
+
+	// KAD: Adding this for keydown functionality on the canvas.
+	var lastMouseDownElementTarget;
+
+
 	// events
 
 	var changeEvent = { type: 'change' };
@@ -254,6 +259,10 @@ THREE.OrbitAndPanControls = function ( object, domElement ) {
 		if ( scope.enabled === false ) { return; }
 		event.preventDefault();
 
+		// KAD: Added this to record that the canvas is in "focus," which it can't actually be so we have to improvise in order to handle
+		// keydown events, which is only fired on elements that have focus.
+		lastMouseDownElementTarget = event.target;
+
 		if ( event.button === 0 ) {
 			if ( scope.noRotate === true ) { return; }
 
@@ -377,6 +386,7 @@ THREE.OrbitAndPanControls = function ( object, domElement ) {
 
 	function onKeyDown( event ) {
 
+		if ( scope.domElement !== lastMouseDownElementTarget ) {return;}
 		if ( scope.enabled === false ) { return; }
 		if ( scope.noKeys === true ) { return; }
 		if ( scope.noPan === true ) { return; }
@@ -518,7 +528,8 @@ THREE.OrbitAndPanControls = function ( object, domElement ) {
 	this.domElement.addEventListener( 'mousewheel', onMouseWheel, false );
 	this.domElement.addEventListener( 'DOMMouseScroll', onMouseWheel, false ); // firefox
 
-	this.domElement.addEventListener( 'keydown', onKeyDown, false );
+	// KAD: Changed from this.domElement because a canvas element cannot have focus.
+	document.addEventListener( 'keydown', onKeyDown, false );
 
 	this.domElement.addEventListener( 'touchstart', touchstart, false );
 	this.domElement.addEventListener( 'touchend', touchend, false );
