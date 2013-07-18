@@ -5,6 +5,10 @@
  * This uses a Self-Executing Anonymous Function to declare the namespace "Main" and create public and private members within in.
  *
  * @author Kevin Dean
+ *
+ * Note: By far the most resource-intensive part of this application is looping through the lights and patterns. That section drops it from close
+ *			to 60fps to 30fps. Performing the audio analysis and animating the lights, both the area lights
+ *			and the geometry faces, all have no real effect on FPS.
  */
 
 /*
@@ -21,11 +25,12 @@
 	var SCALE = 1;
 	var CAM_NBRS = {POSN_X: -140, POSN_Y: 7, POSN_Z: 90, target_X: 0, target_Y: 45, target_Z: 0, FOV_ANGLE: 46, NEAR_PLANE: 1, FAR_PLANE: 5000};
 	// Keep the number of lights low because they are expensive for the GPU to calculate
-	var LIGHT_NBRS = {ROWS: 15, COLS: 38, SRC_INTRVL: 34, WIDTH: 3, HEIGHT: 3, DEPTH: 0.5, MARGIN: 1, EMITTER_FACE: 3, MIN_HEIGHT: 65};
+	var LIGHT_NBRS = {ROWS: 13, COLS: 38, SRC_INTRVL: 34, WIDTH: 3, HEIGHT: 3, DEPTH: 0.5, MARGIN: 1, EMITTER_FACE: 3, MIN_HEIGHT: 65};
+	var LIGHT_CNT = LIGHT_NBRS.ROWS * LIGHT_NBRS.COLS;
 	var LIGHTS_LEFT_STRT_COORD_NBR = -(LIGHT_NBRS.COLS * (LIGHT_NBRS.WIDTH + LIGHT_NBRS.MARGIN))/2 + LIGHT_NBRS.MARGIN;
 	var LIGHTS_FAR_STRT_COORD_NBR = -(LIGHT_NBRS.ROWS * (LIGHT_NBRS.HEIGHT + LIGHT_NBRS.MARGIN))/2 + LIGHT_NBRS.MARGIN;
 	var LIGHT_CLRS = {ON: new THREE.Color(0xE5D9CA), OFF: new THREE.Color(0x090909)};   // ON: new THREE.Color(0xFFF1E0)
-	var LIGHT_INTENSITY_NBRS = {START: 0.0, MAX: 3.5, HEMI: 0.2};
+	var LIGHT_INTENSITY_NBRS = {START: 0.0, MAX: 4, HEMI: 0.2};
 	var ROOM_NBRS = {WIDTH: 800, DEPTH: 600, HEIGHT: 80};
 	var TORUS_KNOT_NBRS = {KNOT_RADIUS: 10, TUBE_RADIUS: 1.5, RADIAL_SEGMENTS: 11, TUBE_SEGMENTS: 8, COPRIME_INT_P: 2, COPRIME_INT_Q: 3};
 	var SCULPTURE_ROTATE_NBRS = {MAX_SPEED: 1, LERP_TM: 5, LERP_TM_MS: 5000};
@@ -38,7 +43,6 @@
 	var PATTERN_ID_PROP_TXT = "patternId";
 	var BOX_NBRS = {MIN_HEIGHT: 20, MIN_WIDTH: 20, MIN_DEPTH: 20, MAX_HEIGHT: 100, MAX_WIDTH: 100, MAX_DEPTH: 100};
 	var SPHERE_NBRS = {MIN_RADIUS: 25, MAX_RADIUS: 75};
-
 
 
 	/**********************
@@ -55,6 +59,7 @@
 	var _sculptureRotateInd = false, _sculptureElapsedRotationDstncNbr = 0, _sculptureElapsedLerpTm = 0;
 	var _rollingAvgBeatLvLs = [ROLLING_AVG_NBRS.SAMPLES_CNT], _rollingAvgBeatLvlNbr = 0;
 	var _audioTrack;
+	var _cameraPathWaypoints = [], _currWaypointIdx = 0;
 
 
 
@@ -108,7 +113,7 @@
 			
 			
 			initRenderer();
-			initCameraAndScene();
+			initSceneAndCamera();
 			initLights();
 			initStats();
 			initGUI();
@@ -174,19 +179,27 @@
 	/*
 	 * Initializes the camera and scene.
 	 */
-	function initCameraAndScene() {
+	function initSceneAndCamera() {
+		_scene = new THREE.Scene();
+		_clock = new THREE.Clock();
+
+
+		// Create waypoints for the camera's path.
+		var point1 = new Waypoint(0, 217, 0, 0, 0);
+		var point2 = new Waypoint(166, 84, 0, 5, 0);
+		var point3 = new Waypoint(-140, 7, 190, 5, 0);
+		_cameraPathWaypoints = [point1, point2, point3];
+
+
 		_camera = new THREE.PerspectiveCamera(CAM_NBRS.FOV_ANGLE, _canvasWidth / _canvasHeight, CAM_NBRS.NEAR_PLANE, CAM_NBRS.FAR_PLANE);
-		_camera.position.set(CAM_NBRS.POSN_X, CAM_NBRS.POSN_Y, CAM_NBRS.POSN_Z);
-		//_scene.add(_camera);  // Do not need to add the _camera to the _scene if using EffectComposer.
+		_camera.position.copy(_cameraPathWaypoints[0]);
+		_scene.add(_camera);
+
 		_cameraControls = new THREE.OrbitAndPanControls(_camera, _renderer.domElement);
 		_cameraControls.target.set(CAM_NBRS.target_X, CAM_NBRS.target_Y, CAM_NBRS.target_Z);
-
-		var startDirectionVect = new THREE.Vector3();
-		startDirectionVect.subVectors( _camera.position, _cameraControls.target );
-
-		_scene = new THREE.Scene();
-
-		_clock = new THREE.Clock();
+		_cameraControls.noPan = true;  // Don't let the user pan the camera. We want to control the target.
+		_cameraControls.noRotate = false;
+		//_cameraControls.autoRotate = true;
 	}
 
 
@@ -279,8 +292,8 @@
 		var sculptureLightMat = new THREE.MeshBasicMaterial( {color: lightSrc.color.getHex(), ambient: lightSrc.color.getHex(), vertexColors: THREE.FaceColors} );
 
 		// Now set ALL the faces to the desired "off" color and set colorsNeedUpdate to true. This will cause the lights to appear off upon first render.
-		for (var i = 0; i < sculptureLightGeom.faces.length; i++) {
-			sculptureLightGeom.faces[i].color.setHex(LIGHT_CLRS.OFF.getHex());			
+		for (var idx = 0, faceCnt = sculptureLightGeom.faces.length; idx < faceCnt; idx++) {
+			sculptureLightGeom.faces[idx].color.setHex(LIGHT_CLRS.OFF.getHex());			
 		}
 		sculptureLightGeom.colorsNeedUpdate = true;
 
@@ -543,11 +556,11 @@
 		newColor.lerp(LIGHT_CLRS.ON, _effectController.intensity);
 
 
-		for (i = 0; i < _lightSources.length; i++) {
-			_lightSources[i].intensity = _effectController.intensity * LIGHT_INTENSITY_NBRS.MAX;
+		for (var idx = 0, lightCnt = _lightSources.length; idx < lightCnt; idx++) {
+			_lightSources[idx].intensity = _effectController.intensity * LIGHT_INTENSITY_NBRS.MAX;
 
-			_lightGeoms[i].faces[LIGHT_NBRS.EMITTER_FACE].color.copy(newColor);
-			_lightGeoms[i].colorsNeedUpdate = true;
+			_lightGeoms[idx].faces[LIGHT_NBRS.EMITTER_FACE].color.copy(newColor);
+			_lightGeoms[idx].colorsNeedUpdate = true;
 		}
 		
 	}
@@ -574,6 +587,19 @@
 		_currTm = _clock.getElapsedTime();
 		
 		// Update _camera
+		var nextPointIdx = _currWaypointIdx + 1;
+		var nextPoint = (nextPointIdx <= _cameraPathWaypoints.length) ? _cameraPathWaypoints[nextPointIdx] : _cameraPathWaypoints[_currWaypointIdx];
+		var offset = new THREE.Vector3();
+		offset.subVectors(nextPoint, _camera.position);
+
+		var thetaNbr = Math.atan2( offset.x, offset.z );  // Angle from z-axis around y-axix
+		var phiNbr = Math.atan2( Math.sqrt( offset.x * offset.x + offset.z * offset.z ), offset.y );  // angle from y-axis
+		// restrict phi to be between desired limits
+		phiNbr = THREE.Math.clamp(phiNbr, _cameraControls.minPolarAngle, _cameraControls.maxPolarAngle);
+
+		var radiusNbr = offset.length;
+		
+
 		_cameraControls.update();
 
 
@@ -668,12 +694,13 @@
 	 */
 	function animateLightIntensities() {
 
-		var newActivePatterns = [];
-		var thisLightGeom;
+		var newActivePatterns = [], thisLightGeom, thisPattern, thisPatternPropIdTxt, intensityRatioNbr, 
+			patternIdx = 0, patternCnt = _activePatterns.length, lightIdx = 0, lightCnt = _lightGeoms.length, newColor = new THREE.Color();
 
-		// Process the active patterns to accumulate their effects on the lights
-		for (var patternIdx = 0; patternIdx < _activePatterns.length; patternIdx++) {
-			var thisPattern = _activePatterns[patternIdx];
+
+		// First loop through the active patterns to update their properties to represent this render frame.
+		for (patternIdx = 0; patternIdx < patternCnt; patternIdx++) {
+			thisPattern = _activePatterns[patternIdx];
 			thisPattern.renderLoopsCnt++;
 
 			// Translate the pattern.
@@ -681,16 +708,21 @@
 			thisPattern.matrixWorld.identity();
 			thisPattern.matrixWorld.setPosition(thisPattern.position);
 
-			// Calcucate the pattern's vertices in world coordinates (THREE.js stores vertices in object space)
+			// Calculate the pattern's vertices in world coordinates (THREE.js stores vertices in object space)
 			calcVerticesInWorldCoords(thisPattern);
+		}
 
 
-			var thisPatternPropIdTxt = PATTERN_ID_PROP_TXT + thisPattern.id.toString();
+		// Next loop through each light, accumulating the effect of each pattern on each one.
+		// NOTE: The lights should be the outermost loop because there are a lot of them. It's far more efficient.
+		for (lightIdx = 0; lightIdx < lightCnt; lightIdx++) {
+			thisLightGeom = _lightGeoms[lightIdx];
+			intensityRatioNbr = 0;
 
+			for (patternIdx = 0; patternIdx < patternCnt; patternIdx++) {
+				thisPattern = _activePatterns[patternIdx];
+				thisPatternPropIdTxt = PATTERN_ID_PROP_TXT + thisPattern.id.toString();
 
-			// Loop through all the lights to see if this pattern intersects each one
-			for (var lightIdx = 0; lightIdx < _lightGeoms.length; lightIdx++) {
-				thisLightGeom = _lightGeoms[lightIdx];
 				// Determine if any points lie within the pattern
 				if (thisPattern.isPointInside(_lights[lightIdx].position)) {
 
@@ -700,7 +732,6 @@
 					} else {
 						thisLightGeom[thisPatternPropIdTxt] = Math.min(1, thisLightGeom[thisPatternPropIdTxt] + thisPattern.lightIntensityRatioIncrmntNbr);
 					}
-
 
 					// Keep those patterns which have affected a light.
 					if (newActivePatterns.indexOf(thisPattern) === -1) {
@@ -723,39 +754,13 @@
 						}
 					}
 				}
-			}
 
-			// Keep a pattern if it didn't affect any lights but is still early in its life.
-			if (newActivePatterns.indexOf(thisPattern) === -1 && thisPattern.renderLoopsCnt <= 15) {
-				newActivePatterns.push(thisPattern);
-			}
-		}
-
-
-		var newColor = new THREE.Color();
-
-		// Now process the lights, accumulating the effects of the patterns of each one.
-		// NOTE: You always want to perform this loop because it will ensure a light's intensity ratio number always gets set to 0.
-		for (idx = 0; idx < _lightGeoms.length; idx++) {
-
-			thisLightGeom = _lightGeoms[idx];
-			var intensityRatioNbr = 0;
-
-
-			// Accumulate the effects of this light's affecting patterns.
-			for (var prop in thisLightGeom) {
-				if (prop.indexOf(PATTERN_ID_PROP_TXT) > -1) {
-					intensityRatioNbr += thisLightGeom[prop];
-
-					// If we hit the maximum ratio, we can stop accumulating.
-					if (intensityRatioNbr >= 1) {
-						intensityRatioNbr = Math.min(1, intensityRatioNbr);
-						break;
-					}
+				if (thisLightGeom[thisPatternPropIdTxt]) {
+					intensityRatioNbr += thisLightGeom[thisPatternPropIdTxt];
 				}
 			}
 
-			thisLightGeom.lightIntensityRatioNbr = intensityRatioNbr;
+			thisLightGeom.lightIntensityRatioNbr = Math.min(1, intensityRatioNbr);
 
 			// Update the emitter face color
 			newColor.copy(LIGHT_CLRS.OFF);
@@ -764,9 +769,18 @@
 			thisLightGeom.colorsNeedUpdate = true;
 
 			// Update the area light's intensity
-			_lightSources[idx].intensity = thisLightGeom.lightIntensityRatioNbr * LIGHT_INTENSITY_NBRS.MAX;
+			_lightSources[lightIdx].intensity = thisLightGeom.lightIntensityRatioNbr * LIGHT_INTENSITY_NBRS.MAX;
 		}
 
+
+		// Keep a pattern if it is still early in its life (i.e., we need to give them a chance to reach the lights).
+		for (patternIdx = 0; patternIdx < patternCnt; patternIdx++) {
+			thisPattern = _activePatterns[patternIdx];
+
+			if (thisPattern.renderLoopsCnt <= 15 && newActivePatterns.indexOf(thisPattern) === -1) {
+				newActivePatterns.push(thisPattern);
+			}
+		}
 
 		// Update our list of active patterns.
 		_activePatterns = newActivePatterns;
@@ -778,7 +792,7 @@
 	 * Convert an object's vertices from object to world coordinates.
 	 */
 	function calcVerticesInWorldCoords (inpObj) {
-		for (var idx = 0; idx < inpObj.vertices.length; idx++) {
+		for (var idx = 0, vertexCnt = inpObj.vertices.length; idx < vertexCnt; idx++) {
 			inpObj.worldVertices[idx] = inpObj.vertices[idx].clone();
 			inpObj.worldVertices[idx].applyMatrix4(inpObj.matrixWorld);
 		}
@@ -852,9 +866,7 @@
 	 * Adds a listener for the webglcontextlost event.
 	 */
 	function addContextLostListener() {
-		this._renderer.domElement.addEventListener("webglcontextlost", function(inpEvent) {
-			handleContextLost(inpEvent);
-		}, false);
+		this._renderer.domElement.addEventListener("webglcontextlost", handleContextLost, false);
 	}
 
 
@@ -889,7 +901,7 @@
 				_patternReleaseInd = false;
 			}
 
-			_rollingAvgBeatLvlNbr = calcBeatLvlRollingAvg(beatDetectNbr);
+			//_rollingAvgBeatLvlNbr = calcBeatLvlRollingAvg(beatDetectNbr);
         }
 
         //(AudioAnalyzer.RtrvFallEqData(this.eqData));
@@ -925,7 +937,7 @@
 
 		var sumNbr = 0;
 
-		for (var idx = 0; idx < _rollingAvgBeatLvLs.length; idx++) {
+		for (var idx = 0, lvlCnt = _rollingAvgBeatLvLs.length; idx < lvlCnt; idx++) {
 			sumNbr += _rollingAvgBeatLvLs[idx];
 		}
 
