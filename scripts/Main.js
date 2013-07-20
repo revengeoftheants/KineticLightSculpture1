@@ -23,7 +23,7 @@
 	 * Constants
 	 **********************/
 	var SCALE = 1;
-	var CAM_NBRS = {POSN_X: -140, POSN_Y: 7, POSN_Z: 90, target_X: 0, target_Y: 45, target_Z: 0, FOV_ANGLE: 46, NEAR_PLANE: 1, FAR_PLANE: 5000};
+	var CAM = {ORBIT_RADIUS_NBR: 180, FOV_ANGLE_NBR: 46, NEAR_PLANE_NBR: 1, FAR_PLANE_NBR: 5000, LOOK_AT_POS: new THREE.Vector3(0, 45, 0)};
 	// Keep the number of lights low because they are expensive for the GPU to calculate
 	var LIGHT_NBRS = {ROWS: 13, COLS: 38, SRC_INTRVL: 34, WIDTH: 3, HEIGHT: 3, DEPTH: 0.5, MARGIN: 1, EMITTER_FACE: 3, MIN_HEIGHT: 65};
 	var LIGHT_CNT = LIGHT_NBRS.ROWS * LIGHT_NBRS.COLS;
@@ -48,7 +48,7 @@
 	/**********************
 	 * Global variables
 	 **********************/
-	var _camera, _scene, _stats, _clock, _delta, _currTm, _animationFrameId;
+	var _camera, _scene, _stats, _clock, _delta, _currTm, _animationFrameId, firstFrameInd = true;
 	var	_cameraControls, _effectController;
 	var _canvasWidth = window.innerWidth, _canvasHeight = window.innerHeight;
 	var _lightSources = [], _lightGeoms = [], _lights = [];
@@ -59,7 +59,9 @@
 	var _sculptureRotateInd = false, _sculptureElapsedRotationDstncNbr = 0, _sculptureElapsedLerpTm = 0;
 	var _rollingAvgBeatLvLs = [ROLLING_AVG_NBRS.SAMPLES_CNT], _rollingAvgBeatLvlNbr = 0;
 	var _audioTrack;
-	var _cameraPathWaypoints = [], _currWaypointIdx = 0;
+	var _camPathWaypoints = [], _currWaypointIdx = 0, _currCamTweenDat = {interpolantNbr: 0};
+	var _camOrbitTranslationMatrix = new THREE.Matrix4();
+
 
 
 
@@ -120,7 +122,7 @@
 			addRoom();
 			addSceneObjs();
 			initPatterns();
-			initAudio();
+			//initAudio();
 			
 			addContextLostListener();
 			_rollingAvgBeatLvLs = initArray(_rollingAvgBeatLvLs, 0);
@@ -183,20 +185,48 @@
 		_scene = new THREE.Scene();
 		_clock = new THREE.Clock();
 
-
 		// Create waypoints for the camera's path.
-		var point1 = new Waypoint(0, 217, 0, 0, 0);
-		var point2 = new Waypoint(166, 84, 0, 5, 0);
-		var point3 = new Waypoint(-140, 7, 190, 5, 0);
-		_cameraPathWaypoints = [point1, point2, point3];
+		var point0 = new OrbitWaypoint(10, 5, 0, 0);
+		var point1 = new OrbitWaypoint(10, 5, 90, 90);
+		_camPathWaypoints = [point0, point1];
+		point0.CalcNormalizedPath(point1);
+		point1.CalcNormalizedPath(point0);
+
+		// Create Tweens for the camera path
+		var tween_to_dat = {interpolantNbr: 1};
+		var tween0And1 = new TWEEN.Tween(_currCamTweenDat).to(tween_to_dat, point0.targetTravelMs);
+		tween0And1.delay(point0.delayMs);
+		tween0And1.easing(TWEEN.Easing.Quadratic.InOut);
+		tween0And1.onUpdate(tweenCamera);
+		tween0And1.onComplete(updtDataOnTweenCompletion);
+
+		var tween1And0 = new TWEEN.Tween(_currCamTweenDat).to(tween_to_dat, point1.targetTravelMs);
+		tween1And0.delay(point1.delayMs);
+		tween1And0.easing(TWEEN.Easing.Quadratic.InOut);
+		tween1And0.onUpdate(tweenCamera);
+		tween1And0.onComplete(updtDataOnTweenCompletion);
+
+		tween0And1.chain(tween1And0);
+		tween1And0.chain(tween0And1);
+
+		tween0And1.start();
 
 
-		_camera = new THREE.PerspectiveCamera(CAM_NBRS.FOV_ANGLE, _canvasWidth / _canvasHeight, CAM_NBRS.NEAR_PLANE, CAM_NBRS.FAR_PLANE);
-		_camera.position.copy(_cameraPathWaypoints[0]);
+		// Create the camera itself
+		_camera = new THREE.PerspectiveCamera(CAM.FOV_ANGLE_NBR, _canvasWidth / _canvasHeight, CAM.NEAR_PLANE_NBR, CAM.FAR_PLANE_NBR);
+
+		// We need this translation matrix because all the orbit calculations we do use the origin as the center of the orbit.
+		_camOrbitTranslationMatrix.makeTranslation(CAM.LOOK_AT_POS.x, CAM.LOOK_AT_POS.y, CAM.LOOK_AT_POS.z);
+
+		var camStartPos = point0.clone();  // The normalized position.
+		camStartPos.multiplyScalar(CAM.ORBIT_RADIUS_NBR);  // Multiply the normalized camera position by the camera's orbit radius
+		camStartPos.applyMatrix4(_camOrbitTranslationMatrix);  // Translate the position from the origin to the orbit center (i.e. the look-at position)
+		_camera.position.copy(camStartPos);
+		_camera.useQuaternion = true;
 		_scene.add(_camera);
 
 		_cameraControls = new THREE.OrbitAndPanControls(_camera, _renderer.domElement);
-		_cameraControls.target.set(CAM_NBRS.target_X, CAM_NBRS.target_Y, CAM_NBRS.target_Z);
+		_cameraControls.target.copy(CAM.LOOK_AT_POS);
 		_cameraControls.noPan = true;  // Don't let the user pan the camera. We want to control the target.
 		_cameraControls.noRotate = false;
 		//_cameraControls.autoRotate = true;
@@ -587,20 +617,9 @@
 		_currTm = _clock.getElapsedTime();
 		
 		// Update _camera
-		var nextPointIdx = _currWaypointIdx + 1;
-		var nextPoint = (nextPointIdx <= _cameraPathWaypoints.length) ? _cameraPathWaypoints[nextPointIdx] : _cameraPathWaypoints[_currWaypointIdx];
-		var offset = new THREE.Vector3();
-		offset.subVectors(nextPoint, _camera.position);
-
-		var thetaNbr = Math.atan2( offset.x, offset.z );  // Angle from z-axis around y-axix
-		var phiNbr = Math.atan2( Math.sqrt( offset.x * offset.x + offset.z * offset.z ), offset.y );  // angle from y-axis
-		// restrict phi to be between desired limits
-		phiNbr = THREE.Math.clamp(phiNbr, _cameraControls.minPolarAngle, _cameraControls.maxPolarAngle);
-
-		var radiusNbr = offset.length;
-		
-
-		_cameraControls.update();
+		TWEEN.update();
+		_camera.lookAt(CAM.LOOK_AT_POS);
+		//_cameraControls.update();
 
 
 		// Update audio
@@ -637,6 +656,8 @@
 
 		// Render
 		_renderer.render(_scene, _camera);
+
+		firstFrameInd = false;
 	}
 
 
@@ -960,5 +981,39 @@
 		return inpStartNbr + (THREE.Math.clamp(inpPercent, 0, 1) * (inpEndNbr - inpStartNbr));
     }
 
+
+
+    /*
+     * Moves the camera based on an interpolation between two points via the TWEEN library.
+     */
+	function tweenCamera() {
+		var currWaypoint = _camPathWaypoints[_currWaypointIdx];
+
+
+		// Uses interpolant value of 0.0 to 1.0 to go back and forth
+		var interpolatedQuat = new THREE.Quaternion();
+		THREE.Quaternion.slerp(currWaypoint.startQuat, currWaypoint.endQuat, interpolatedQuat, _currCamTweenDat.interpolantNbr);
+
+		var newCamPos = currWaypoint.clone();  //  This is the start point for the interpolated rotation. Note: the waypoint positions are already normalized
+		newCamPos.applyQuaternion(interpolatedQuat);  // Apply the interpolated angle to the start position
+		newCamPos.multiplyScalar(CAM.ORBIT_RADIUS_NBR);  // Multiply the normalized camera position by the camera's orbit radius
+		newCamPos.applyMatrix4(_camOrbitTranslationMatrix);  // Translate the position from the origin to the orbit center (i.e. the look-at position)
+		_camera.position.copy(newCamPos);
+	}
+
+
+
+	/*
+	 * Updates global data when a tween is completed.
+	 */
+	function updtDataOnTweenCompletion() {
+		_currWaypointIdx++;
+
+		if (_currWaypointIdx === _camPathWaypoints.length) {
+			_currWaypointIdx = 0;
+		}
+
+		_currCamTweenDat.interpolantNbr = 0;
+	}
 
 } (window.Main = window.Main || {}, jQuery) );

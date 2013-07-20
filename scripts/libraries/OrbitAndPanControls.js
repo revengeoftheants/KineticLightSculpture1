@@ -244,6 +244,7 @@ THREE.OrbitAndPanControls = function ( object, domElement ) {
 
 	function getAutoRotationAngle() {
 
+		// 360 degrees in 60 seconds at 60fps * a constant.
 		return 2 * Math.PI / 60 / 60 * scope.autoRotateSpeed;
 
 	}
