@@ -59,7 +59,7 @@
 	var _sculptureRotateInd = false, _sculptureElapsedRotationDstncNbr = 0, _sculptureElapsedLerpTm = 0;
 	var _rollingAvgBeatLvLs = [ROLLING_AVG_NBRS.SAMPLES_CNT], _rollingAvgBeatLvlNbr = 0;
 	var _audioTrack;
-	var _camPathWaypoints = [], _currWaypointIdx = 0, _currCamTweenDat = {interpolantNbr: 0};
+	var _camPathWaypointsSeq = [], _currWaypointIdx = 0, _currCamTweenDat = {interpolantNbr: 0};
 	var _camOrbitTranslationMatrix = new THREE.Matrix4();
 
 
@@ -122,7 +122,7 @@
 			addRoom();
 			addSceneObjs();
 			initPatterns();
-			//initAudio();
+			initAudio();
 			
 			addContextLostListener();
 			_rollingAvgBeatLvLs = initArray(_rollingAvgBeatLvLs, 0);
@@ -186,30 +186,36 @@
 		_clock = new THREE.Clock();
 
 		// Create waypoints for the camera's path.
-		var point0 = new OrbitWaypoint(10, 5, 0, 0);
-		var point1 = new OrbitWaypoint(10, 5, 90, 90);
-		_camPathWaypoints = [point0, point1];
-		point0.CalcNormalizedPath(point1);
-		point1.CalcNormalizedPath(point0);
 
-		// Create Tweens for the camera path
+		// We will use a quaternion slerp to get from point0 to point1 because Euler rotations produce a curved path from deg (0,0) to (90, 90).
+		var point0 = new OrbitWaypoint(3, 18, 0, 0, new THREE.Vector3(0, 0, 1), -90);
+		var point1 = new OrbitWaypoint(0, 23, 90, 90);  // Total elapsed time to point1 should be 44 seconds. No delay here is best.
+		var point2 = new OrbitWaypoint(20, 30, 103, -76);
+		var point3 = new OrbitWaypoint(10, 30, 103, -180);
+		var point4 = new OrbitWaypoint(20, 10, 103, -270);
+
+		// Create a sequence of waypoints
+		_camPathWaypointsSeq = [point0, point1, point2, point3, point4];
+		var waypointTweens = [];
+
+		// Create Tweens to interpolate along the path
 		var tween_to_dat = {interpolantNbr: 1};
-		var tween0And1 = new TWEEN.Tween(_currCamTweenDat).to(tween_to_dat, point0.targetTravelMs);
-		tween0And1.delay(point0.delayMs);
-		tween0And1.easing(TWEEN.Easing.Quadratic.InOut);
-		tween0And1.onUpdate(tweenCamera);
-		tween0And1.onComplete(updtDataOnTweenCompletion);
 
-		var tween1And0 = new TWEEN.Tween(_currCamTweenDat).to(tween_to_dat, point1.targetTravelMs);
-		tween1And0.delay(point1.delayMs);
-		tween1And0.easing(TWEEN.Easing.Quadratic.InOut);
-		tween1And0.onUpdate(tweenCamera);
-		tween1And0.onComplete(updtDataOnTweenCompletion);
+		for (var idx = 0, pointCnt = _camPathWaypointsSeq. length; idx < pointCnt; idx++) {
+			var thisPoint = _camPathWaypointsSeq[idx];
+			var thisTween = new TWEEN.Tween(_currCamTweenDat).to(tween_to_dat, thisPoint.targetTravelMs);
+			thisTween.delay(thisPoint.delayMs);
+			thisTween.easing(TWEEN.Easing.Quadratic.InOut);
+			thisTween.onUpdate(handleTweenUpdate);
+			thisTween.onComplete(handleTweenCompletion);
+			waypointTweens.push(thisTween);
 
-		tween0And1.chain(tween1And0);
-		tween1And0.chain(tween0And1);
+			if (idx > 0) {
+				waypointTweens[idx - 1].chain(thisTween);
+			}
+		}
 
-		tween0And1.start();
+		waypointTweens[0].start();
 
 
 		// Create the camera itself
@@ -230,6 +236,8 @@
 		_cameraControls.noPan = true;  // Don't let the user pan the camera. We want to control the target.
 		_cameraControls.noRotate = false;
 		//_cameraControls.autoRotate = true;
+
+		_scene.fog = new THREE.FogExp2( 0xefd1b5, 0.0025 );
 	}
 
 
@@ -984,18 +992,41 @@
 
 
     /*
-     * Moves the camera based on an interpolation between two points via the TWEEN library.
+     * Handles the Tween onStart event.
      */
-	function tweenCamera() {
-		var currWaypoint = _camPathWaypoints[_currWaypointIdx];
+	function handleTweenStart() {
+		// We created our waypoints with relative positions. This will store the absolute positions (the camera is currently at this waypoint)
+		// in case we want to use them.
+		_camPathWaypointsSeq[_currWaypointIdx].copy(_camera.position);
+	}
 
 
-		// Uses interpolant value of 0.0 to 1.0 to go back and forth
-		var interpolatedQuat = new THREE.Quaternion();
-		THREE.Quaternion.slerp(currWaypoint.startQuat, currWaypoint.endQuat, interpolatedQuat, _currCamTweenDat.interpolantNbr);
 
-		var newCamPos = currWaypoint.clone();  //  This is the start point for the interpolated rotation. Note: the waypoint positions are already normalized
-		newCamPos.applyQuaternion(interpolatedQuat);  // Apply the interpolated angle to the start position
+    /*
+     * Handles the Tween onUpdate event.
+     */
+	function handleTweenUpdate() {
+		var currWaypoint = _camPathWaypointsSeq[_currWaypointIdx];
+		var nextWaypointIdx = (_currWaypointIdx + 1 < _camPathWaypointsSeq.length) ? _currWaypointIdx + 1 : 0;
+		var nextWaypoint = _camPathWaypointsSeq[nextWaypointIdx];
+
+		var newCamPos = new THREE.Vector3();
+
+		if (currWaypoint.startQuat !== null) {
+			// If this waypoint has quaternions defined use them.
+			var interpolatedQuat = new THREE.Quaternion();
+			THREE.Quaternion.slerp(currWaypoint.startQuat, currWaypoint.endQuat, interpolatedQuat, _currCamTweenDat.interpolantNbr);
+
+			newCamPos = currWaypoint.clone();  //  This is the start point for the interpolated rotation. Note: the waypoint positions are already normalized
+			newCamPos.applyQuaternion(interpolatedQuat);  // Apply the interpolated angle to the start position
+		} else {
+			var newCamPhiAndThetaRadianNbrs = currWaypoint.phiAndThetaRadianNbrs.clone();
+			newCamPhiAndThetaRadianNbrs.lerp(nextWaypoint.phiAndThetaRadianNbrs, _currCamTweenDat.interpolantNbr);
+			newCamPos.x = Math.sin(newCamPhiAndThetaRadianNbrs.x) * Math.sin(newCamPhiAndThetaRadianNbrs.y);
+			newCamPos.y = Math.cos(newCamPhiAndThetaRadianNbrs.x);
+			newCamPos.z = Math.sin(newCamPhiAndThetaRadianNbrs.x) * Math.cos(newCamPhiAndThetaRadianNbrs.y);
+		}
+
 		newCamPos.multiplyScalar(CAM.ORBIT_RADIUS_NBR);  // Multiply the normalized camera position by the camera's orbit radius
 		newCamPos.applyMatrix4(_camOrbitTranslationMatrix);  // Translate the position from the origin to the orbit center (i.e. the look-at position)
 		_camera.position.copy(newCamPos);
@@ -1004,12 +1035,12 @@
 
 
 	/*
-	 * Updates global data when a tween is completed.
+	 * Handles the Tween onComplete event.
 	 */
-	function updtDataOnTweenCompletion() {
+	function handleTweenCompletion() {
 		_currWaypointIdx++;
 
-		if (_currWaypointIdx === _camPathWaypoints.length) {
+		if (_currWaypointIdx === _camPathWaypointsSeq.length) {
 			_currWaypointIdx = 0;
 		}
 
