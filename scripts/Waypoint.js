@@ -7,7 +7,7 @@
  * @param inpThetaDegNbr:  Degrees this waypoint lies from the positive z-axis towards the positive x-axis.
  * @param inpLookAtPos:  Vector3 object representing the position in world space to look at.
  */
-Waypoint = function(inpDelayTm, inpTargetTravelTm, inpPhiDegNbr, inpThetaDegNbr, inpLookAtPos) {
+Waypoint = function(inpDelayTm, inpTargetTravelTm, inpPhiDegNbr, inpThetaDegNbr) {
     THREE.Vector3.call(this);
 
     this.delayMs = (inpDelayTm !== undefined) ? inpDelayTm * 1000 : 0;
@@ -15,7 +15,6 @@ Waypoint = function(inpDelayTm, inpTargetTravelTm, inpPhiDegNbr, inpThetaDegNbr,
     this.phiRadianNbr = (inpPhiDegNbr !== undefined) ? inpPhiDegNbr * Math.PI/180 : 0;
     this.thetaRadianNbr = (inpThetaDegNbr !== undefined) ? inpThetaDegNbr * Math.PI/180 : 0;
     this.phiAndThetaRadianNbrs = new THREE.Vector2(this.phiRadianNbr, this.thetaRadianNbr);
-    this.lookAtPos = (inpLookAtPos !== undefined) ? inpLookAtPos : new THREE.Vector3(0, 0, 0); 
 
     this.x = Math.sin(this.phiRadianNbr) * Math.sin(this.thetaRadianNbr);
     this.y = Math.cos(this.phiRadianNbr);

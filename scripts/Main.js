@@ -186,21 +186,40 @@
 		_clock = new THREE.Clock();
 
 		var tweenInterpolateDat = {interpolantNbr: 1};
+		var xRotationAxis = new THREE.Vector3(1, 0, 0);
+		var yRotationAxis = new THREE.Vector3(0, 1, 0);
+		var zRotationAxis = new THREE.Vector3(0, 0, 1);
 
 		// Create waypoints for the camera's path.
 
 		// We will use a quaternion slerp to get from point0 to point1 because Euler rotations produce a curved path from deg (0,0) to (90, 90).
 		var point0 = new OrbitWaypoint(3, 18, 0, 0, new THREE.Vector3(0, 0, -1), 90);
+		
+		// This orientation logic basically works, but the result isn't pleasing.
 		/*
-		var zOrientTween = new TWEEN.Tween(_currCamOrientTweenDat).to(tweenInterpolateDat, 0);
-		zOrientTween.delay(0);
+		var xOrientTween3 = new TWEEN.Tween(_currCamOrientTweenDat).to(tweenInterpolateDat, 0);
+		xOrientTween3.delay(0);
+		xOrientTween3.easing(TWEEN.Easing.Quadratic.InOut);
+		xOrientTween3.onStart(handleTweenOrientStart);
+		xOrientTween3.onUpdate(handleTweenOrientUpdate);
+		xOrientTween3.onComplete(handleTweenOrientCompletion);
+		var zOrientTween = new TWEEN.Tween(_currCamOrientTweenDat).to(tweenInterpolateDat, 14000);
+		zOrientTween.delay(point0.delayMs);
 		zOrientTween.easing(TWEEN.Easing.Quadratic.InOut);
 		zOrientTween.onStart(handleTweenOrientStart);
 		zOrientTween.onUpdate(handleTweenOrientUpdate);
 		zOrientTween.onComplete(handleTweenOrientCompletion);
-		var zRotationAxis = new THREE.Vector3(0, 0, 1);
-		point0.AddOrientationTween(zRotationAxis, -90, zOrientTween);
+		
+		var initRotationAxis = new THREE.Vector3(1, 0, 0);
+		point0.AddOrientationTween(initRotationAxis, -90, xOrientTween3);  // Point the camera down towards the ground initially.
+		// Rotate the camera over the course of the path so that its positive Y points straight up at the end.
+		point0.AddOrientationTween(zRotationAxis, 90, zOrientTween);
+
+		var newQuat = new THREE.Quaternion();
+		newQuat.setFromEuler(new THREE.Vector3(Math.PI/2, Math.PI/2, 0));
+		point0.orientationEndQuats[1] = newQuat;
 		*/
+
 
 		var point1 = new OrbitWaypoint(0, 23, 90, 90);  // No delay at point1 is best because of hurry to get to point2.
 		// Arrive at point2 at 0:44 to match first major beat. Depart from point2 at 1:18, which is the song's next stage. Get to point4 at 2:18.
@@ -217,7 +236,7 @@
 		xOrientTween.onUpdate(handleTweenOrientUpdate);
 		xOrientTween.onComplete(handleTweenOrientCompletion);
 		var yOrientTween = new TWEEN.Tween(_currCamOrientTweenDat).to(tweenInterpolateDat, 10000);
-		yOrientTween.delay(30000);
+		yOrientTween.delay(29000);
 		yOrientTween.easing(TWEEN.Easing.Quadratic.InOut);
 		yOrientTween.onStart(handleTweenOrientStart);
 		yOrientTween.onUpdate(handleTweenOrientUpdate);
@@ -229,11 +248,9 @@
 		xOrientTween2.onUpdate(handleTweenOrientUpdate);
 		xOrientTween2.onComplete(handleTweenOrientCompletion);
 
-		var xRotationAxis = new THREE.Vector3(1, 0, 0);
-		var yRotationAxis = new THREE.Vector3(0, 1, 0);
-		point5.AddOrientationTween(xRotationAxis, 4, xOrientTween);
+		//point5.AddOrientationTween(xRotationAxis, 4, xOrientTween);
 		point5.AddOrientationTween(yRotationAxis, 180, yOrientTween);
-		point5.AddOrientationTween(xRotationAxis, -4, xOrientTween2);
+		//point5.AddOrientationTween(xRotationAxis, -4, xOrientTween2);
 
 		var point6 = new OrbitWaypoint(30, 20, 86, -90);
 
