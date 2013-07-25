@@ -33,7 +33,7 @@
 	var LIGHT_INTENSITY_NBRS = {START: 0.0, MAX: 4, HEMI: 0.2};
 	var ROOM_NBRS = {WIDTH: 800, DEPTH: 600, HEIGHT: 80};
 	var TORUS_KNOT_NBRS = {KNOT_RADIUS: 10, TUBE_RADIUS: 1.5, RADIAL_SEGMENTS: 11, TUBE_SEGMENTS: 30, COPRIME_INT_P: 2, COPRIME_INT_Q: 3};
-	var SCULPTURE_ROTATE_NBRS = {MAX_SPEED: 1, LERP_TM: 5, LERP_TM_MS: 5000};
+	var SCULPTURE_ROTATE_NBRS = {MAX_SPEED: 1, START_LERP_TM: 8, START_LERP_TM_MS: 8000, END_LERP_TM_MS: 33000};
 	var ROLLING_AVG_NBRS = {SAMPLES_CNT: 20};
 
 	var SOUNDCLOUD = {CLIENT_ID: "ace41127a1d0a4904d5e548447130eee", TRACK_ID: 17889996};
@@ -122,7 +122,7 @@
 			addRoom();
 			addSceneObjs();
 			initPatterns();
-			initAudio();
+			loadAudio();
 			
 			addContextLostListener();
 			_rollingAvgBeatLvLs = initArray(_rollingAvgBeatLvLs, 0);
@@ -193,34 +193,9 @@
 		// Create waypoints for the camera's path.
 
 		// We will use a quaternion slerp to get from point0 to point1 because Euler rotations produce a curved path from deg (0,0) to (90, 90).
-		var point0 = new OrbitWaypoint(3, 18, 0, 0, new THREE.Vector3(0, 0, -1), 90);
-		
-		// This orientation logic basically works, but the result isn't pleasing.
-		/*
-		var xOrientTween3 = new TWEEN.Tween(_currCamOrientTweenDat).to(tweenInterpolateDat, 0);
-		xOrientTween3.delay(0);
-		xOrientTween3.easing(TWEEN.Easing.Quadratic.InOut);
-		xOrientTween3.onStart(handleTweenOrientStart);
-		xOrientTween3.onUpdate(handleTweenOrientUpdate);
-		xOrientTween3.onComplete(handleTweenOrientCompletion);
-		var zOrientTween = new TWEEN.Tween(_currCamOrientTweenDat).to(tweenInterpolateDat, 14000);
-		zOrientTween.delay(point0.delayMs);
-		zOrientTween.easing(TWEEN.Easing.Quadratic.InOut);
-		zOrientTween.onStart(handleTweenOrientStart);
-		zOrientTween.onUpdate(handleTweenOrientUpdate);
-		zOrientTween.onComplete(handleTweenOrientCompletion);
-		
-		var initRotationAxis = new THREE.Vector3(1, 0, 0);
-		point0.AddOrientationTween(initRotationAxis, -90, xOrientTween3);  // Point the camera down towards the ground initially.
-		// Rotate the camera over the course of the path so that its positive Y points straight up at the end.
-		point0.AddOrientationTween(zRotationAxis, 90, zOrientTween);
+		//var point0 = new OrbitWaypoint(0, 21, 0, 0, new THREE.Vector3(0, 0, -1), 90);
 
-		var newQuat = new THREE.Quaternion();
-		newQuat.setFromEuler(new THREE.Vector3(Math.PI/2, Math.PI/2, 0));
-		point0.orientationEndQuats[1] = newQuat;
-		*/
-
-
+		var point0 = new OrbitWaypoint(0, 21, 0.1, 0);
 		var point1 = new OrbitWaypoint(0, 23, 90, 90);  // No delay at point1 is best because of hurry to get to point2.
 		// Arrive at point2 at 0:44 to match first major beat. Depart from point2 at 1:18, which is the song's next stage. Get to point4 at 2:18.
 		var point2 = new OrbitWaypoint(34, 25, 103, -76);
@@ -229,33 +204,35 @@
 		var point4 = new OrbitWaypoint(15, 10, 103, -270, new THREE.Vector3(0, 0, -1), -17);
 		var point5 = new LinearWaypoint(0, 55, 86, -270);
 
-		var xOrientTween = new TWEEN.Tween(_currCamOrientTweenDat).to(tweenInterpolateDat, 2000);
-		xOrientTween.delay(0);
+		var xOrientTween = new TWEEN.Tween(_currCamOrientTweenDat).to(tweenInterpolateDat, 10000);
+		xOrientTween.delay(10000);
 		xOrientTween.easing(TWEEN.Easing.Quadratic.InOut);
 		xOrientTween.onStart(handleTweenOrientStart);
 		xOrientTween.onUpdate(handleTweenOrientUpdate);
 		xOrientTween.onComplete(handleTweenOrientCompletion);
 		var yOrientTween = new TWEEN.Tween(_currCamOrientTweenDat).to(tweenInterpolateDat, 10000);
-		yOrientTween.delay(29000);
+		yOrientTween.delay(10000);
 		yOrientTween.easing(TWEEN.Easing.Quadratic.InOut);
 		yOrientTween.onStart(handleTweenOrientStart);
 		yOrientTween.onUpdate(handleTweenOrientUpdate);
 		yOrientTween.onComplete(handleTweenOrientCompletion);
-		var xOrientTween2 = new TWEEN.Tween(_currCamOrientTweenDat).to(tweenInterpolateDat, 2000);
+		var xOrientTween2 = new TWEEN.Tween(_currCamOrientTweenDat).to(tweenInterpolateDat, 10000);
 		xOrientTween2.delay(0);
 		xOrientTween2.easing(TWEEN.Easing.Quadratic.InOut);
 		xOrientTween2.onStart(handleTweenOrientStart);
 		xOrientTween2.onUpdate(handleTweenOrientUpdate);
 		xOrientTween2.onComplete(handleTweenOrientCompletion);
-
-		//point5.AddOrientationTween(xRotationAxis, 4, xOrientTween);
+		
+		// Orient the camera straight up and down, turn 180 degrees, and point the camera back down at the target.
+		point5.AddOrientationTween(xRotationAxis, 4, xOrientTween);
 		point5.AddOrientationTween(yRotationAxis, 180, yOrientTween);
-		//point5.AddOrientationTween(xRotationAxis, -4, xOrientTween2);
+		point5.AddOrientationTween(xRotationAxis, -4, xOrientTween2);
 
-		var point6 = new OrbitWaypoint(30, 20, 86, -90);
+		var point6 = new OrbitWaypoint(5, 45, 86, -90);
+		var point7 = new OrbitWaypoint(0, 0, 0.1, 0);
 
 		// Create a sequence of waypoints
-		_camPathWaypointsSeq = [point0, point1, point2, point3, point4, point5, point6];
+		_camPathWaypointsSeq = [point0, point1, point2, point3, point4, point5, point6, point7];
 
 		for (var idx = 0, pointCnt = _camPathWaypointsSeq.length; idx < pointCnt; idx++) {
 			var thisPoint = _camPathWaypointsSeq[idx];
@@ -473,7 +450,7 @@
 	/*
 	 * Initializes the audio.
 	 */
-	function initAudio() {
+	function loadAudio() {
 		soundManager.onready( function() {
 			loadSoundCloudTrack(); 
 		});
@@ -494,7 +471,8 @@
 				id: "track",
 				url: "http://api.soundcloud.com/tracks/" + SOUNDCLOUD.TRACK_ID + "/stream?client_id=" + SOUNDCLOUD.CLIENT_ID,
 				usePeakData: false,
-				useEQData: true  // True: enables frequency spectrum data
+				useEQData: true,  // True: enables frequency spectrum data
+				onfinish: handleAudioCompletion
 			}
 		);
 
@@ -511,13 +489,6 @@
 
 		// Initialize the analyzer.
 		AudioAnalyzer.InitBeatRangeSamples();
-
-		inpOptions.onfinish = function() {
-			// You will only get eqData for a looped track if you destory and re-create it. This appears to be a problem in the source SoundManager2_SMSound_AS3.as.
-			// The eqData object that flash passes 
-			// http://stackoverflow.com/questions/11642556/soundcloud-soundmanager2-eqdata
-			loadSoundCloudTrack();
-		};
 
 		window.setTimeout(function() {
 			// Start our camera tweening.
@@ -850,8 +821,12 @@
 			// Update the emitter face color
 			newColor.copy(LIGHT_CLRS.OFF);
 			newColor.lerp(LIGHT_CLRS.ON, thisLightGeom.lightIntensityRatioNbr);
-			thisLightGeom.faces[LIGHT_NBRS.EMITTER_FACE].color.copy(newColor);
-			thisLightGeom.colorsNeedUpdate = true;
+
+			// For performance, do not update a face's color if we do not have to.
+			if (thisLightGeom.faces[LIGHT_NBRS.EMITTER_FACE].color.getHex() !== newColor.getHex()) {
+				thisLightGeom.faces[LIGHT_NBRS.EMITTER_FACE].color.copy(newColor);
+				thisLightGeom.colorsNeedUpdate = true;
+			}
 
 			// Update the area light's intensity
 			_lightSources[lightIdx].intensity = thisLightGeom.lightIntensityRatioNbr * LIGHT_INTENSITY_NBRS.MAX;
@@ -918,12 +893,12 @@
 		var trackRemainingMs = trackDurationMs - trackPositionMs;
 
 		if (_sculptureRotateInd) {
-			if (trackRemainingMs <= SCULPTURE_ROTATE_NBRS.LERP_TM_MS) {
-				rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, trackRemainingMs/SCULPTURE_ROTATE_NBRS.LERP_TM_MS);
+			if (trackRemainingMs <= SCULPTURE_ROTATE_NBRS.END_LERP_TM_MS) {
+				rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, trackRemainingMs/SCULPTURE_ROTATE_NBRS.END_LERP_TM_MS);
 			} else {
 				// Add an extra fraction of a second so that we are sure to get a positive rotation speed upon rotation startup.
 				_sculptureElapsedLerpTm += _delta + 0.001;
-				rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, _sculptureElapsedLerpTm/SCULPTURE_ROTATE_NBRS.LERP_TM);
+				rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, _sculptureElapsedLerpTm/SCULPTURE_ROTATE_NBRS.START_LERP_TM);
 			}
 
 			_torusKnot.useQuaternion = true;
@@ -1182,6 +1157,25 @@
 		if (_camPathWaypointsSeq[_currWaypointIdx].currOrientationIdx >= _camPathWaypointsSeq[_currWaypointIdx].orientationTweens.length) {
 			_camPathWaypointsSeq[_currWaypointIdx].currOrientationIdx = 0;
 		}
+	}
+
+
+
+	/*
+	 * Handles the onFinish event from a SoundManager2 SMSound (i.e., Sound object).
+	 */
+	function handleAudioCompletion() {
+		// Remove all Tweens from the "started" list.
+		TWEEN.removeAll();
+
+		for (var idx = 0, lengthNbr = _camPathWaypointsSeq.length; idx < lengthNbr; idx++) {
+			_camPathWaypointsSeq[idx].orientationTweensStartedInd = false;
+		}
+
+		// You will only get eqData for a looped track if you destory and re-create it. This appears to be a problem in the source SoundManager2_SMSound_AS3.as.
+		// The eqData object that flash passes to javascript is incorrect.
+		// http://stackoverflow.com/questions/11642556/soundcloud-soundmanager2-eqdata
+		loadSoundCloudTrack();
 	}
 
 } (window.Main = window.Main || {}, jQuery) );

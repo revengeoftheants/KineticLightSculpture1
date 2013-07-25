@@ -26,12 +26,6 @@ Waypoint = function(inpDelayTm, inpTargetTravelTm, inpPhiDegNbr, inpThetaDegNbr)
     this.currOrientationIdx = 0;
     this.orientationTweensStartedInd = false;
     this.camOrientationAtTweenStart = null;
-
-    /*
-    this.orientationTween = null;
-    this.orientationStartQuat = null;
-    this.orientationEndQuat = null;
-    */
 };
 
 // Inherit from THREE.Vector3
