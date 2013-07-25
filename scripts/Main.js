@@ -32,7 +32,7 @@
 	var LIGHT_CLRS = {ON: new THREE.Color(0xE5D9CA), OFF: new THREE.Color(0x090909)};   // ON: new THREE.Color(0xFFF1E0)
 	var LIGHT_INTENSITY_NBRS = {START: 0.0, MAX: 4, HEMI: 0.2};
 	var ROOM_NBRS = {WIDTH: 800, DEPTH: 600, HEIGHT: 80};
-	var TORUS_KNOT_NBRS = {KNOT_RADIUS: 10, TUBE_RADIUS: 1.5, RADIAL_SEGMENTS: 11, TUBE_SEGMENTS: 8, COPRIME_INT_P: 2, COPRIME_INT_Q: 3};
+	var TORUS_KNOT_NBRS = {KNOT_RADIUS: 10, TUBE_RADIUS: 1.5, RADIAL_SEGMENTS: 11, TUBE_SEGMENTS: 30, COPRIME_INT_P: 2, COPRIME_INT_Q: 3};
 	var SCULPTURE_ROTATE_NBRS = {MAX_SPEED: 1, LERP_TM: 5, LERP_TM_MS: 5000};
 	var ROLLING_AVG_NBRS = {SAMPLES_CNT: 20};
 
@@ -59,7 +59,7 @@
 	var _sculptureRotateInd = false, _sculptureElapsedRotationDstncNbr = 0, _sculptureElapsedLerpTm = 0;
 	var _rollingAvgBeatLvLs = [ROLLING_AVG_NBRS.SAMPLES_CNT], _rollingAvgBeatLvlNbr = 0;
 	var _audioTrack;
-	var _camPathWaypointsSeq = [], _currWaypointIdx = 0, _currCamTweenDat = {interpolantNbr: 0};
+	var _camPathWaypointsSeq = [], _currWaypointIdx = 0, _waypointTweens = [], _currCamPathTweenDat = {interpolantNbr: 0}, _currCamOrientTweenDat = {interpolantNbr: 0};
 	var _camOrbitTranslationMatrix = new THREE.Matrix4();
 
 
@@ -185,37 +185,74 @@
 		_scene = new THREE.Scene();
 		_clock = new THREE.Clock();
 
+		var tweenInterpolateDat = {interpolantNbr: 1};
+
 		// Create waypoints for the camera's path.
 
 		// We will use a quaternion slerp to get from point0 to point1 because Euler rotations produce a curved path from deg (0,0) to (90, 90).
-		var point0 = new OrbitWaypoint(3, 18, 0, 0, new THREE.Vector3(0, 0, 1), -90);
-		var point1 = new OrbitWaypoint(0, 23, 90, 90);  // Total elapsed time to point1 should be 44 seconds. No delay here is best.
-		var point2 = new OrbitWaypoint(20, 30, 103, -76);
-		var point3 = new OrbitWaypoint(10, 30, 103, -180);
-		var point4 = new OrbitWaypoint(20, 10, 103, -270);
+		var point0 = new OrbitWaypoint(3, 18, 0, 0, new THREE.Vector3(0, 0, -1), 90);
+		/*
+		var zOrientTween = new TWEEN.Tween(_currCamOrientTweenDat).to(tweenInterpolateDat, 0);
+		zOrientTween.delay(0);
+		zOrientTween.easing(TWEEN.Easing.Quadratic.InOut);
+		zOrientTween.onStart(handleTweenOrientStart);
+		zOrientTween.onUpdate(handleTweenOrientUpdate);
+		zOrientTween.onComplete(handleTweenOrientCompletion);
+		var zRotationAxis = new THREE.Vector3(0, 0, 1);
+		point0.AddOrientationTween(zRotationAxis, -90, zOrientTween);
+		*/
+
+		var point1 = new OrbitWaypoint(0, 23, 90, 90);  // No delay at point1 is best because of hurry to get to point2.
+		// Arrive at point2 at 0:44 to match first major beat. Depart from point2 at 1:18, which is the song's next stage. Get to point4 at 2:18.
+		var point2 = new OrbitWaypoint(34, 25, 103, -76);
+		var point3 = new OrbitWaypoint(10, 25, 103, -180);
+		// Ensure this rotation angle matches the location of the next waypoint.
+		var point4 = new OrbitWaypoint(15, 10, 103, -270, new THREE.Vector3(0, 0, -1), -17);
+		var point5 = new LinearWaypoint(0, 55, 86, -270);
+
+		var xOrientTween = new TWEEN.Tween(_currCamOrientTweenDat).to(tweenInterpolateDat, 2000);
+		xOrientTween.delay(0);
+		xOrientTween.easing(TWEEN.Easing.Quadratic.InOut);
+		xOrientTween.onStart(handleTweenOrientStart);
+		xOrientTween.onUpdate(handleTweenOrientUpdate);
+		xOrientTween.onComplete(handleTweenOrientCompletion);
+		var yOrientTween = new TWEEN.Tween(_currCamOrientTweenDat).to(tweenInterpolateDat, 10000);
+		yOrientTween.delay(30000);
+		yOrientTween.easing(TWEEN.Easing.Quadratic.InOut);
+		yOrientTween.onStart(handleTweenOrientStart);
+		yOrientTween.onUpdate(handleTweenOrientUpdate);
+		yOrientTween.onComplete(handleTweenOrientCompletion);
+		var xOrientTween2 = new TWEEN.Tween(_currCamOrientTweenDat).to(tweenInterpolateDat, 2000);
+		xOrientTween2.delay(0);
+		xOrientTween2.easing(TWEEN.Easing.Quadratic.InOut);
+		xOrientTween2.onStart(handleTweenOrientStart);
+		xOrientTween2.onUpdate(handleTweenOrientUpdate);
+		xOrientTween2.onComplete(handleTweenOrientCompletion);
+
+		var xRotationAxis = new THREE.Vector3(1, 0, 0);
+		var yRotationAxis = new THREE.Vector3(0, 1, 0);
+		point5.AddOrientationTween(xRotationAxis, 4, xOrientTween);
+		point5.AddOrientationTween(yRotationAxis, 180, yOrientTween);
+		point5.AddOrientationTween(xRotationAxis, -4, xOrientTween2);
+
+		var point6 = new OrbitWaypoint(30, 20, 86, -90);
 
 		// Create a sequence of waypoints
-		_camPathWaypointsSeq = [point0, point1, point2, point3, point4];
-		var waypointTweens = [];
+		_camPathWaypointsSeq = [point0, point1, point2, point3, point4, point5, point6];
 
-		// Create Tweens to interpolate along the path
-		var tween_to_dat = {interpolantNbr: 1};
-
-		for (var idx = 0, pointCnt = _camPathWaypointsSeq. length; idx < pointCnt; idx++) {
+		for (var idx = 0, pointCnt = _camPathWaypointsSeq.length; idx < pointCnt; idx++) {
 			var thisPoint = _camPathWaypointsSeq[idx];
-			var thisTween = new TWEEN.Tween(_currCamTweenDat).to(tween_to_dat, thisPoint.targetTravelMs);
+			var thisTween = new TWEEN.Tween(_currCamPathTweenDat).to(tweenInterpolateDat, thisPoint.targetTravelMs);
 			thisTween.delay(thisPoint.delayMs);
 			thisTween.easing(TWEEN.Easing.Quadratic.InOut);
-			thisTween.onUpdate(handleTweenUpdate);
-			thisTween.onComplete(handleTweenCompletion);
-			waypointTweens.push(thisTween);
+			thisTween.onUpdate(handleTweenPathUpdate);
+			thisTween.onComplete(handleTweenPathSegmentCompletion);
+			_waypointTweens.push(thisTween);
 
 			if (idx > 0) {
-				waypointTweens[idx - 1].chain(thisTween);
+				_waypointTweens[idx - 1].chain(thisTween);
 			}
 		}
-
-		waypointTweens[0].start();
 
 
 		// Create the camera itself
@@ -228,7 +265,9 @@
 		camStartPos.multiplyScalar(CAM.ORBIT_RADIUS_NBR);  // Multiply the normalized camera position by the camera's orbit radius
 		camStartPos.applyMatrix4(_camOrbitTranslationMatrix);  // Translate the position from the origin to the orbit center (i.e. the look-at position)
 		_camera.position.copy(camStartPos);
+		_camera.lookAt(CAM.LOOK_AT_POS);
 		_camera.useQuaternion = true;
+		_camera.rotationAutoUpdate = true;  // This is set to true by default. It forces the rotationMatrix to get calculated each frame.
 		_scene.add(_camera);
 
 		_cameraControls = new THREE.OrbitAndPanControls(_camera, _renderer.domElement);
@@ -362,7 +401,7 @@
 		floorMap.anisotropy = 4;
 
 		// The lower the specular value is, the less shiny the material will be. The closer it is to the diffuse color, the more it will look like metal.
-		var concreteMat = new THREE.MeshPhongMaterial({color: 0x808080, ambient: 0xFFFFFF, specular: 0x141414, shininess: 05, map: floorMap, bumpMap: floorMap, bumpScale: 0.05});
+		var concreteMat = new THREE.MeshPhongMaterial({color: 0x808080, ambient: 0xFFFFFF, specular: 0x141414, shininess: 05, map: floorMap, bumpMap: floorMap, bumpScale: 0.25});
 		var floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_NBRS.WIDTH, ROOM_NBRS.DEPTH), concreteMat);
 		//floor.rotation.y = Math.PI;  // The repetition of the pattern is less obvious from the side.
 		floor.rotation.x = -Math.PI/2;
@@ -464,6 +503,9 @@
 		};
 
 		window.setTimeout(function() {
+			// Start our camera tweening.
+			_waypointTweens[0].start();
+
 			_audioTrack.play(inpOptions);
 		}, 1);
 	}
@@ -626,7 +668,6 @@
 		
 		// Update _camera
 		TWEEN.update();
-		_camera.lookAt(CAM.LOOK_AT_POS);
 		//_cameraControls.update();
 
 
@@ -652,9 +693,7 @@
 
 
 		// Rotate the sculpture underneath the lights
-		if (_sculptureRotateInd) {
-			rotateSculpture();
-		}
+		rotateSculpture();
 
 
 		if (_renderer.getContext().isContextLost()) {
@@ -856,30 +895,32 @@
 	 */
 	function rotateSculpture() {
 
-		var rotateSpeedNbr;
+		var rotateSpeedNbr = 0;
 		var trackPositionMs = (_audioTrack && _audioTrack.position) ? _audioTrack.position : 0;
 		var trackDurationMs = (_audioTrack && _audioTrack.duration) ? _audioTrack.duration : 0;
 		var trackRemainingMs = trackDurationMs - trackPositionMs;
 
-		if (trackRemainingMs <= SCULPTURE_ROTATE_NBRS.LERP_TM_MS) {
-			rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, trackRemainingMs/SCULPTURE_ROTATE_NBRS.LERP_TM_MS);
-		} else {
-			// Add an extra fraction of a second so that we are sure to get a positive rotation speed upon rotation startup.
-			_sculptureElapsedLerpTm += _delta + 0.001;
-			rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, _sculptureElapsedLerpTm/SCULPTURE_ROTATE_NBRS.LERP_TM);
+		if (_sculptureRotateInd) {
+			if (trackRemainingMs <= SCULPTURE_ROTATE_NBRS.LERP_TM_MS) {
+				rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, trackRemainingMs/SCULPTURE_ROTATE_NBRS.LERP_TM_MS);
+			} else {
+				// Add an extra fraction of a second so that we are sure to get a positive rotation speed upon rotation startup.
+				_sculptureElapsedLerpTm += _delta + 0.001;
+				rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, _sculptureElapsedLerpTm/SCULPTURE_ROTATE_NBRS.LERP_TM);
+			}
+
+			_torusKnot.useQuaternion = true;
+			var quat = new THREE.Quaternion();
+
+			// Note: We don't want to calculate distance directly from the overall elapsed time because that doesn't work when we went to decelerate
+			// the rotation at the end of the audio track. We would end up multiplying a large number (the overall elapsed time) by a smaller number
+			// than we had been using, thus leading to jerkiness. So we first calculate the interval distance and then add it to the overall distance.
+			_sculptureElapsedRotationDstncNbr += _delta * rotateSpeedNbr;
+			quat.setFromAxisAngle( new THREE.Vector3(0, 0.8, 0.2), _sculptureElapsedRotationDstncNbr);
+
+			quat.normalize();  // Normalize the quaternion or else you will get a distorted shape.
+			_torusKnot.quaternion = quat;
 		}
-
-		_torusKnot.useQuaternion = true;
-		var quat = new THREE.Quaternion();
-
-		// Note: We don't want to calculate distance directly from the overall elapsed time because that doesn't work when we went to decelerate
-		// the rotation at the end of the audio track. We would end up multiplying a large number (the overall elapsed time) by a smaller number
-		// than we had been using, thus leading to jerkiness. So we first calculate the interval distance and then add it to the overall distance.
-		_sculptureElapsedRotationDstncNbr += _delta * rotateSpeedNbr;
-		quat.setFromAxisAngle( new THREE.Vector3(0, 0.8, 0.2), _sculptureElapsedRotationDstncNbr);
-
-		quat.normalize();  // Normalize the quaternion or else you will get a distorted shape.
-		_torusKnot.quaternion = quat;
 
 
 		if (rotateSpeedNbr === 0) {
@@ -925,15 +966,11 @@
 
 			if (beatDetectNbr > 1.15) {  //Note: For Lusine's "Baffle", the first major beat is 1.21.
 				_patternReleaseInd = true;
-				_sculptureRotateInd = true;
+			_sculptureRotateInd = true;
 			} else {
 				_patternReleaseInd = false;
 			}
-
-			//_rollingAvgBeatLvlNbr = calcBeatLvlRollingAvg(beatDetectNbr);
         }
-
-        //(AudioAnalyzer.RtrvFallEqData(this.eqData));
     }
 
 
@@ -992,59 +1029,142 @@
 
 
     /*
-     * Handles the Tween onStart event.
-     */
-	function handleTweenStart() {
-		// We created our waypoints with relative positions. This will store the absolute positions (the camera is currently at this waypoint)
-		// in case we want to use them.
-		_camPathWaypointsSeq[_currWaypointIdx].copy(_camera.position);
-	}
-
-
-
-    /*
      * Handles the Tween onUpdate event.
      */
-	function handleTweenUpdate() {
+	function handleTweenPathUpdate() {
 		var currWaypoint = _camPathWaypointsSeq[_currWaypointIdx];
 		var nextWaypointIdx = (_currWaypointIdx + 1 < _camPathWaypointsSeq.length) ? _currWaypointIdx + 1 : 0;
 		var nextWaypoint = _camPathWaypointsSeq[nextWaypointIdx];
 
+		var interpolatedQuat = new THREE.Quaternion();
 		var newCamPos = new THREE.Vector3();
 
-		if (currWaypoint.startQuat !== null) {
-			// If this waypoint has quaternions defined use them.
-			var interpolatedQuat = new THREE.Quaternion();
-			THREE.Quaternion.slerp(currWaypoint.startQuat, currWaypoint.endQuat, interpolatedQuat, _currCamTweenDat.interpolantNbr);
 
-			newCamPos = currWaypoint.clone();  //  This is the start point for the interpolated rotation. Note: the waypoint positions are already normalized
-			newCamPos.applyQuaternion(interpolatedQuat);  // Apply the interpolated angle to the start position
-		} else {
-			var newCamPhiAndThetaRadianNbrs = currWaypoint.phiAndThetaRadianNbrs.clone();
-			newCamPhiAndThetaRadianNbrs.lerp(nextWaypoint.phiAndThetaRadianNbrs, _currCamTweenDat.interpolantNbr);
-			newCamPos.x = Math.sin(newCamPhiAndThetaRadianNbrs.x) * Math.sin(newCamPhiAndThetaRadianNbrs.y);
-			newCamPos.y = Math.cos(newCamPhiAndThetaRadianNbrs.x);
-			newCamPos.z = Math.sin(newCamPhiAndThetaRadianNbrs.x) * Math.cos(newCamPhiAndThetaRadianNbrs.y);
+		if (currWaypoint instanceof OrbitWaypoint) {
+			if (currWaypoint.orbitStartQuat !== null) {
+				// If this waypoint has quaternions defined use them.
+				THREE.Quaternion.slerp(currWaypoint.orbitStartQuat, currWaypoint.orbitEndQuat, interpolatedQuat, _currCamPathTweenDat.interpolantNbr);
+
+				// This is the start point for the interpolated rotation. Note: the waypoint positions are already normalized
+				newCamPos = currWaypoint.clone();
+				newCamPos.applyQuaternion(interpolatedQuat);  // Apply the interpolated angle to the start position
+			} else {
+				var newCamPhiAndThetaRadianNbrs = currWaypoint.phiAndThetaRadianNbrs.clone();
+				newCamPhiAndThetaRadianNbrs.lerp(nextWaypoint.phiAndThetaRadianNbrs, _currCamPathTweenDat.interpolantNbr);
+				newCamPos.x = Math.sin(newCamPhiAndThetaRadianNbrs.x) * Math.sin(newCamPhiAndThetaRadianNbrs.y);
+				newCamPos.y = Math.cos(newCamPhiAndThetaRadianNbrs.x);
+				newCamPos.z = Math.sin(newCamPhiAndThetaRadianNbrs.x) * Math.cos(newCamPhiAndThetaRadianNbrs.y);
+			}
+
+		} else if (currWaypoint instanceof LinearWaypoint) {
+			newCamPos = currWaypoint.clone().lerp(nextWaypoint, _currCamPathTweenDat.interpolantNbr);
+
 		}
+
 
 		newCamPos.multiplyScalar(CAM.ORBIT_RADIUS_NBR);  // Multiply the normalized camera position by the camera's orbit radius
 		newCamPos.applyMatrix4(_camOrbitTranslationMatrix);  // Translate the position from the origin to the orbit center (i.e. the look-at position)
 		_camera.position.copy(newCamPos);
+
+
+		
+		if (currWaypoint.orientationEndQuats.length === 0) {
+			_camera.lookAt(CAM.LOOK_AT_POS);
+		} else {
+			if (currWaypoint.orientationTweensStartedInd === false) {
+				currWaypoint.orientationTweens[0].start();
+				currWaypoint.orientationTweensStartedInd = true;
+			}
+		}
+
+		
+
+
+		// Code that tries to keep camera from flipping to maintain UP vector. However, it just means the camera winds up upsidedown.
+		/*
+		var camLookAtDirection = CAM.LOOK_AT_POS.clone().sub(_camera.position).normalize();
+
+		if (((rtrvNbrSign(camLookAtDirection.x) === -1 * rtrvNbrSign(_prevCamLookAtDirection.x))
+				&& (camLookAtDirection.x !== 0 && _prevCamLookAtDirection.x !== 0) 
+			|| (rtrvNbrSign(camLookAtDirection.z) === -1 * rtrvNbrSign(_prevCamLookAtDirection.z))
+				&& (camLookAtDirection.z !== 0 && _prevCamLookAtDirection.z !== 0))
+			&& Math.abs(camLookAtDirection.y) > 0.98) {
+			_camera.up.y = -_camera.up.y;
+		}
+		
+		_prevCamLookAtDirection.copy(camLookAtDirection);
+		*/
 	}
 
 
 
 	/*
-	 * Handles the Tween onComplete event.
+	 * Returns 1 if a number is positive, -1 if it is 0, and 0 if it is 0.
+	 *
+	 * @param inpNbr:  The number to check.
 	 */
-	function handleTweenCompletion() {
+	function rtrvNbrSign(inpNbr) { 
+		return inpNbr > 0 ? 1 : inpNbr < 0 ? -1 : 0; 
+	}
+
+
+
+	/*
+	 * Handles the Tween onComplete event for path tweens.
+	 */
+	function handleTweenPathSegmentCompletion() {
 		_currWaypointIdx++;
 
-		if (_currWaypointIdx === _camPathWaypointsSeq.length) {
+		if (_currWaypointIdx >= _camPathWaypointsSeq.length) {
 			_currWaypointIdx = 0;
 		}
 
-		_currCamTweenDat.interpolantNbr = 0;
+		_currCamPathTweenDat.interpolantNbr = 0;
+	}
+
+
+
+	/*
+	 * Handles the orientation start of the camera.
+	 */
+	function handleTweenOrientStart() {
+		_camPathWaypointsSeq[_currWaypointIdx].camOrientationAtTweenStart = _camera.quaternion.clone();
+	}
+
+
+
+	/*
+	 * Handles the orientation update of the camera.
+	 */
+	function handleTweenOrientUpdate() {
+		var currWaypoint = _camPathWaypointsSeq[_currWaypointIdx];
+		var interpolatedQuat = new THREE.Quaternion();
+
+		if (currWaypoint.orientationStartQuat !== null) {
+			THREE.Quaternion.slerp(currWaypoint.orientationStartQuats[currWaypoint.currOrientationIdx], currWaypoint.orientationEndQuats[currWaypoint.currOrientationIdx], interpolatedQuat, _currCamOrientTweenDat.interpolantNbr);
+
+			var newCamOrientation = _camPathWaypointsSeq[_currWaypointIdx].camOrientationAtTweenStart.clone();
+			newCamOrientation.multiply(interpolatedQuat);  // Apply the interpolated angle to the start orientation.
+			_camera.quaternion.copy(newCamOrientation);
+		} else {
+			// We cannot process this waypoint.
+		}
+	}
+
+
+
+	/*
+	 * Handles the Tween onComplete event for orientation tweens.
+	 */ 
+	function handleTweenOrientCompletion() {
+		_currCamOrientTweenDat.interpolantNbr = 0;
+
+		_camPathWaypointsSeq[_currWaypointIdx].currOrientationIdx++;
+
+		// Make sure to reset this waypoint's orientation index back to 0 so that we can loop the entire animation without rebuilding everything.
+		if (_camPathWaypointsSeq[_currWaypointIdx].currOrientationIdx >= _camPathWaypointsSeq[_currWaypointIdx].orientationTweens.length) {
+			_camPathWaypointsSeq[_currWaypointIdx].currOrientationIdx = 0;
+		}
 	}
 
 } (window.Main = window.Main || {}, jQuery) );
