@@ -39,7 +39,7 @@
 	var SOUNDCLOUD = {CLIENT_ID: "ace41127a1d0a4904d5e548447130eee", TRACK_ID: 17889996};
 
 	// For patterns
-	var PATTERN_NBRS = {MIN_SPEED: 1.5, MAX_SPEED: 7, MAX_SPEED_SCALE: 1.3, MAX_INTENSITY_INCRMNT_RATIO: 0.1, START_POSITION_ARC_RADIUS: 100, MAX_CNT: 8};
+	var PATTERN_NBRS = {MIN_SPEED: 100, MAX_SPEED: 250, MAX_SPEED_SCALE: 1.3, MAX_INTENSITY_INCRMNT_RATIO: 0.1, START_POSITION_ARC_RADIUS: 100, MAX_CNT: 8};
 	var PATTERN_ID_PROP_TXT = "patternId";
 	var BOX_NBRS = {MIN_HEIGHT: 20, MIN_WIDTH: 20, MIN_DEPTH: 20, MAX_HEIGHT: 100, MAX_WIDTH: 100, MAX_DEPTH: 100};
 	var SPHERE_NBRS = {MIN_RADIUS: 25, MAX_RADIUS: 75};
@@ -48,7 +48,7 @@
 	/**********************
 	 * Global variables
 	 **********************/
-	var _camera, _scene, _stats, _clock, _delta, _currTm, _animationFrameId, firstFrameInd = true;
+	var _camera, _scene, _stats, _clock, _deltaTm, _currTm, _animationFrameId, firstFrameInd = true;
 	var	_effectController;
 	var _canvasWidth = window.innerWidth, _canvasHeight = window.innerHeight;
 	var _lightSources = [], _lightGeoms = [], _lights = [];
@@ -645,7 +645,7 @@
 	 * Renders the scene during each animation loop.
 	 */
 	function render() {
-		_delta = _clock.getDelta();
+		_deltaTm = _clock.getDelta();
 		_currTm = _clock.getElapsedTime();
 		
 		// Update _camera
@@ -753,7 +753,7 @@
 			thisPattern.renderLoopsCnt++;
 
 			// Translate the pattern.
-			thisPattern.position.add(thisPattern.velocity);
+			thisPattern.position.add(thisPattern.velocity.clone().multiplyScalar(_deltaTm));
 			thisPattern.matrixWorld.identity();
 			thisPattern.matrixWorld.setPosition(thisPattern.position);
 
@@ -890,7 +890,7 @@
 				rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, trackRemainingMs/SCULPTURE_ROTATE_NBRS.END_LERP_TM_MS);
 			} else {
 				// Add an extra fraction of a second so that we are sure to get a positive rotation speed upon rotation startup.
-				_sculptureElapsedLerpTm += _delta + 0.001;
+				_sculptureElapsedLerpTm += _deltaTm + 0.001;
 				rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, _sculptureElapsedLerpTm/SCULPTURE_ROTATE_NBRS.START_LERP_TM);
 			}
 
@@ -900,7 +900,7 @@
 			// Note: We don't want to calculate distance directly from the overall elapsed time because that doesn't work when we went to decelerate
 			// the rotation at the end of the audio track. We would end up multiplying a large number (the overall elapsed time) by a smaller number
 			// than we had been using, thus leading to jerkiness. So we first calculate the interval distance and then add it to the overall distance.
-			_sculptureElapsedRotationDstncNbr += _delta * rotateSpeedNbr;
+			_sculptureElapsedRotationDstncNbr += _deltaTm * rotateSpeedNbr;
 			quat.setFromAxisAngle( new THREE.Vector3(0, 0.8, 0.2), _sculptureElapsedRotationDstncNbr);
 
 			quat.normalize();  // Normalize the quaternion or else you will get a distorted shape.
