@@ -49,7 +49,7 @@
 	 * Global variables
 	 **********************/
 	var _camera, _scene, _stats, _clock, _delta, _currTm, _animationFrameId, firstFrameInd = true;
-	var	_cameraControls, _effectController;
+	var	_effectController;
 	var _canvasWidth = window.innerWidth, _canvasHeight = window.innerHeight;
 	var _lightSources = [], _lightGeoms = [], _lights = [];
 	var _lightHeightNbr, _lightHeightDirNbr, _lightHeightChgIncrmntNbr;
@@ -263,12 +263,6 @@
 		_camera.useQuaternion = true;
 		_camera.rotationAutoUpdate = true;  // This is set to true by default. It forces the rotationMatrix to get calculated each frame.
 		_scene.add(_camera);
-
-		_cameraControls = new THREE.OrbitAndPanControls(_camera, _renderer.domElement);
-		_cameraControls.target.copy(CAM.LOOK_AT_POS);
-		_cameraControls.noPan = true;  // Don't let the user pan the camera. We want to control the target.
-		_cameraControls.noRotate = false;
-		//_cameraControls.autoRotate = true;
 
 		_scene.fog = new THREE.FogExp2( 0xefd1b5, 0.0025 );
 	}
@@ -656,7 +650,6 @@
 		
 		// Update _camera
 		TWEEN.update();
-		//_cameraControls.update();
 
 
 		// Update audio
