@@ -51,7 +51,7 @@
 	var _camera, _scene, _stats, _clock, _delta, _currTm, _animationFrameId, firstFrameInd = true;
 	var	_cameraControls, _effectController;
 	var _canvasWidth = window.innerWidth, _canvasHeight = window.innerHeight;
-	var _lightSources = [], _lightGeoms = [], _lights = [];
+	var _lightSources = [], _lightEmitterGeoms = [], _lights = [], _lightCasingFaceGeom, _lightCasingSideGeom, _lightCasingGeom, _lightCasingMat, _universalCasingMesh;
 	var _lightHeightNbr, _lightHeightDirNbr, _lightHeightChgIncrmntNbr;
 	var _availablePatterns = [], _activePatterns = [];
 	var _patternIdCnt = 0, _patternReleaseInd = false, _prevPatternReleaseTm = 0;
@@ -281,11 +281,61 @@
 		//AmbientLight is not currently supported in WebGLDeferred_renderer, so we are using a directional light instead.
 		//_scene.add(new THREE.AmbientLight(0xFFFFFF));
 
-		var directionalLight = new THREE.HemisphereLight(LIGHT_CLRS.ON.getHex(), LIGHT_CLRS.ON.getHex(), LIGHT_INTENSITY_NBRS.HEMI);
-		_scene.add(directionalLight);
+		var hemisphereLight = new THREE.HemisphereLight(LIGHT_CLRS.ON.getHex(), LIGHT_CLRS.ON.getHex(), LIGHT_INTENSITY_NBRS.HEMI);
+		_scene.add(hemisphereLight);
 
+
+		// Create a 5-sided box to represent the case for each sculpture light. We only need a single case geometry for all of these lights
+		// because these cases will be static (i.e., we won't alter their face colors or anything like that).
+		_lightCasingFaceGeom = new THREE.PlaneGeometry(LIGHT_NBRS.WIDTH, LIGHT_NBRS.HEIGHT, 1, 1);
+		_lightCasingSideGeom = new THREE.PlaneGeometry(LIGHT_NBRS.WIDTH, LIGHT_NBRS.DEPTH, 1, 1);
+
+		var matrix = new THREE.Matrix4();
+
+		var lightCasingTopGeom = _lightCasingFaceGeom.clone();
+		lightCasingTopGeom.applyMatrix( matrix.makeRotationX(180 * Math.PI/180) );
+		lightCasingTopGeom.applyMatrix( matrix.makeTranslation(0, 0, -LIGHT_NBRS.DEPTH/2) );
+
+		var lightCasingSide0Geom = _lightCasingSideGeom.clone();
+		lightCasingSide0Geom.applyMatrix( matrix.makeRotationX(90 * Math.PI/180) );
+		lightCasingSide0Geom.applyMatrix( matrix.makeRotationZ(90 * Math.PI/180) );
+		lightCasingSide0Geom.applyMatrix( matrix.makeTranslation(LIGHT_NBRS.WIDTH/2, 0, 0) );
+
+		var lightCasingSide1Geom = _lightCasingSideGeom.clone();
+		lightCasingSide1Geom.applyMatrix( matrix.makeRotationX(90 * Math.PI/180) );
+		lightCasingSide1Geom.applyMatrix( matrix.makeRotationZ(-90 * Math.PI/180) );
+		lightCasingSide1Geom.applyMatrix( matrix.makeTranslation(-LIGHT_NBRS.WIDTH/2, 0, 0) );
+
+		var lightCasingSide2Geom = _lightCasingSideGeom.clone();
+		lightCasingSide2Geom.applyMatrix( matrix.makeRotationX(-90 * Math.PI/180) );
+		lightCasingSide2Geom.applyMatrix( matrix.makeTranslation(0, LIGHT_NBRS.WIDTH/2, 0) );
+
+		var lightCasingSide3Geom = _lightCasingSideGeom.clone();
+		lightCasingSide3Geom.applyMatrix( matrix.makeRotationX(90 * Math.PI/180) );
+		lightCasingSide3Geom.applyMatrix( matrix.makeTranslation(0, -LIGHT_NBRS.WIDTH/2, 0) );
+
+
+		_lightCasingGeom = new THREE.Geometry();
+		THREE.GeometryUtils.merge(_lightCasingGeom, lightCasingTopGeom);
+		THREE.GeometryUtils.merge(_lightCasingGeom, lightCasingSide0Geom);
+		THREE.GeometryUtils.merge(_lightCasingGeom, lightCasingSide1Geom);
+		THREE.GeometryUtils.merge(_lightCasingGeom, lightCasingSide2Geom);
+		THREE.GeometryUtils.merge(_lightCasingGeom, lightCasingSide3Geom);
+
+
+		// NOTE: Set the mesh ambient and diffuse colors to the full intensity of the lights they represent; otherwise, they will not glow.
+		_lightCasingMat = new THREE.MeshBasicMaterial( {color: LIGHT_CLRS.ON.getHex(), ambient: LIGHT_CLRS.ON.getHex(), vertexColors: THREE.FaceColors} );
+
+		// Set the faces to the desired "off" color and set colorsNeedUpdate to true. This will cause the lights to appear off upon first render.
+		for (var idx = 0, cnt = _lightCasingGeom.faces.length; idx < cnt; idx++) {
+			_lightCasingGeom.faces[idx].color.setHex(LIGHT_CLRS.OFF.getHex());
+		}
+
+		_lightCasingGeom.colorsNeedUpdate = true;
+
+
+		// Create sculpture lights
 		for (var i = 0; i < LIGHT_NBRS.ROWS; i++) {
-
 			for (var j = 0; j < LIGHT_NBRS.COLS; j++) {
 				crteSculptureLight(i, j);
 			}
@@ -352,35 +402,38 @@
 		}
 
 
-		// Ideally we would just use the same geometry for each light, but since we want to be able to alter the color of each light independently,
-		// we will create an independent geometry for each. NOTE: The optimal solution would probably be to create one geometry for the 5-sided case
-		// of each light and then just create unique plane geometries for each light.
-		var sculptureLightGeom = new THREE.CubeGeometry(LIGHT_NBRS.WIDTH, LIGHT_NBRS.DEPTH, LIGHT_NBRS.HEIGHT);
-		_lightGeoms[lightIdx] = sculptureLightGeom;
+		var matrix = new THREE.Matrix4();
 
-		// Setting vertexColors = FaceColors allows you to set the color of each face independently.
-		// NOTE: Set the mesh ambient and diffuse colors to the full intensity of the lights they represent; otherwise, they will not glow.
-		var sculptureLightMat = new THREE.MeshBasicMaterial( {color: lightSrc.color.getHex(), ambient: lightSrc.color.getHex(), vertexColors: THREE.FaceColors} );
-
-		// Now set ALL the faces to the desired "off" color and set colorsNeedUpdate to true. This will cause the lights to appear off upon first render.
-		for (var idx = 0, faceCnt = sculptureLightGeom.faces.length; idx < faceCnt; idx++) {
-			sculptureLightGeom.faces[idx].color.setHex(LIGHT_CLRS.OFF.getHex());			
-		}
-		sculptureLightGeom.colorsNeedUpdate = true;
+		// The emitter face cannot be reused across light objects because we will update each light's emitter face color independently.
+		var lightEmitterFaceGeom = _lightCasingFaceGeom.clone();
+		lightEmitterFaceGeom.applyMatrix( matrix.makeTranslation(0, 0, LIGHT_NBRS.DEPTH/2) );
 
 		// Add new properties to the light geometry
-		sculptureLightGeom.lightIntensityRatioNbr = 0;  // Range of 0-1 of how intensely this light is shining at this time.
+		lightEmitterFaceGeom.lightIntensityRatioNbr = 0;  // Range of 0-1 of how intensely this light is shining at this time.
+		_lightEmitterGeoms[lightIdx] = lightEmitterFaceGeom;
 
+		// Set the faces to the desired "off" color and set colorsNeedUpdate to true. This will cause the lights to appear off upon first render.
+		lightEmitterFaceGeom.faces[0].color.setHex(LIGHT_CLRS.OFF.getHex());
+		lightEmitterFaceGeom.colorsNeedUpdate = true;		
 
-		var sculptureLight = new THREE.Mesh(sculptureLightGeom, sculptureLightMat);
-		_lights[lightIdx] = sculptureLight;
+		var lightCasingMesh = new THREE.Mesh(_lightCasingGeom, _lightCasingMat);
+		var lightEmitterMesh = new THREE.Mesh(lightEmitterFaceGeom, _lightCasingMat);
+		lightCasingMesh.receiveShadow = lightCasingMesh.castShadow = lightEmitterMesh.receiveShadow = lightEmitterMesh.castShadow = true;
 
-		sculptureLight.position = lightSrc.position;
-		sculptureLight.rotation = lightSrc.rotation;
-		sculptureLight.scale = lightSrc.scale;
-		sculptureLight.receiveShadow = true;
+		// FOR TESTING
+		//lightEmitterFaceGeom.faces[0].color.setHex(LIGHT_CLRS.ON.getHex());
+		//lightEmitterFaceGeom.colorsNeedUpdate = true;
+		
+		var lightObj = new THREE.Object3D();
+		lightObj.add(lightCasingMesh);
+		lightObj.add(lightEmitterMesh);
+		lightObj.position = lightSrc.position;
+		lightObj.rotation.set(90 * Math.PI/180, 0, 0);
+		lightObj.scale = lightSrc.scale;
 
-		_scene.add(sculptureLight);
+		_scene.add(lightObj);
+
+		_lights[lightIdx] = lightObj;
 	}
 
 
@@ -627,8 +680,8 @@
 		for (var idx = 0, lightCnt = _lightSources.length; idx < lightCnt; idx++) {
 			_lightSources[idx].intensity = _effectController.intensity * LIGHT_INTENSITY_NBRS.MAX;
 
-			_lightGeoms[idx].faces[LIGHT_NBRS.EMITTER_FACE].color.copy(newColor);
-			_lightGeoms[idx].colorsNeedUpdate = true;
+			_lightEmitterGeoms[idx].faces[LIGHT_NBRS.EMITTER_FACE].color.copy(newColor);
+			_lightEmitterGeoms[idx].colorsNeedUpdate = true;
 		}
 		
 	}
@@ -751,7 +804,7 @@
 	function animateLightIntensities() {
 
 		var newActivePatterns = [], thisLightGeom, thisPattern, thisPatternPropIdTxt, intensityRatioNbr, 
-			patternIdx = 0, patternCnt = _activePatterns.length, lightIdx = 0, lightCnt = _lightGeoms.length, newColor = new THREE.Color();
+			patternIdx = 0, patternCnt = _activePatterns.length, lightIdx = 0, lightCnt = _lightEmitterGeoms.length, newColor = new THREE.Color();
 
 
 		// First loop through the active patterns to update their properties to represent this render frame.
@@ -772,7 +825,7 @@
 		// Next loop through each light, accumulating the effect of each pattern on each one.
 		// NOTE: The lights should be the outermost loop because there are a lot of them. It's far more efficient.
 		for (lightIdx = 0; lightIdx < lightCnt; lightIdx++) {
-			thisLightGeom = _lightGeoms[lightIdx];
+			thisLightGeom = _lightEmitterGeoms[lightIdx];
 			intensityRatioNbr = 0;
 
 			for (patternIdx = 0; patternIdx < patternCnt; patternIdx++) {
@@ -823,8 +876,8 @@
 			newColor.lerp(LIGHT_CLRS.ON, thisLightGeom.lightIntensityRatioNbr);
 
 			// For performance, do not update a face's color if we do not have to.
-			if (thisLightGeom.faces[LIGHT_NBRS.EMITTER_FACE].color.getHex() !== newColor.getHex()) {
-				thisLightGeom.faces[LIGHT_NBRS.EMITTER_FACE].color.copy(newColor);
+			if (thisLightGeom.faces[0].color.getHex() !== newColor.getHex()) {
+				thisLightGeom.faces[0].color.copy(newColor);
 				thisLightGeom.colorsNeedUpdate = true;
 			}
 
@@ -1168,7 +1221,7 @@
 		// Remove all Tweens from the "started" list.
 		TWEEN.removeAll();
 
-		for (var idx = 0, lengthNbr = _camPathWaypointsSeq.length; idx < lengthNbr; idx++) {
+		for (var idx = 0, cnt = _camPathWaypointsSeq.length; idx < cnt; idx++) {
 			_camPathWaypointsSeq[idx].orientationTweensStartedInd = false;
 		}
 
