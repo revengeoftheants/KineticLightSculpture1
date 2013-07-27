@@ -74,7 +74,7 @@
 	 * Initializes SoundManager2, which needs to happen before the DOM is ready because that is when SM2 applies configuration and starts up.
 	 */
 	Main.InitAudio = function() {
-		soundManager.setup( { url: "/flash/", flashVersion: 9, debugFlash: false, debugMode: false, useHTML5Audio: false, preferFlash: false, flashLoadTimeout: 10000, useHighPerformance: true } );
+		soundManager.setup( { url: "flash/", flashVersion: 9, debugFlash: false, debugMode: false, useHTML5Audio: false, preferFlash: false, flashLoadTimeout: 10000, useHighPerformance: true } );
 	};
 
 
@@ -162,7 +162,8 @@
 	 */
 	function initRenderer() {
 
-		_renderer = new THREE.WebGLDeferredRenderer( { antialias: true, scale: SCALE, brightness: 5, tonemapping: THREE.FilmicOperator } );
+		// Set preserveDrawingBuffer = true to get screenshot capability.
+		_renderer = new THREE.WebGLDeferredRenderer( { antialias: true, scale: SCALE, brightness: 5, tonemapping: THREE.FilmicOperator, preserveDrawingBuffer: false } );
 		//_renderer = new THREE.WebGLRenderer( { antialias: true, scale: SCALE } );
 
 		_renderer.setSize(_canvasWidth, _canvasHeight);  // Cannot set size via constructor parameters for WebGL_renderer.
@@ -1170,5 +1171,43 @@
 		// http://stackoverflow.com/questions/11642556/soundcloud-soundmanager2-eqdata
 		loadSoundCloudTrack();
 	}
+
+
+
+	/*
+	 * Handles the window being resized.
+	 */
+	window.addEventListener("resize", function(inpEvent) {
+		_camera.aspect = window.innerWidth / window.innerHeight;
+		_camera.updateProjectionMatrix();
+		_renderer.setSize(window.innerWidth, window.innerHeight);
+	});
+
+
+	/*
+	 * Adds screenshot capability.
+	 */
+	/*
+	window.addEventListener("keyup", function(inpEvent) {
+		var imgData;
+		var button = document.getElementById('saveImg');
+
+		//Listen to 'P' key
+		if (inpEvent.which !== 80) return;
+
+		try {
+			imgData = _renderer.domElement.toDataURL();      
+			console.log(imgData);
+		}
+		catch(excp) {
+			console.log("Browser does not support taking screenshot of 3d context");
+			return;
+		}
+
+		button.onclick = function() {
+			window.location.href = imgData.replace('image/png', 'image/octet-stream');
+		};
+	});
+	*/
 
 } (window.Main = window.Main || {}, jQuery) );

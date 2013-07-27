@@ -8,9 +8,17 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 	var _this = this;
 
 	var _camera;  //KAD: Added this to get AreaLight functionality working.
+	var _preserveDrawingBufferInd = parameters.preserveDrawingBuffer !== undefined ? parameters.preserveDrawingBuffer : false;  // KAD: Added this for screen capture.
 
-	var fullWidth = parameters.width !== undefined ? parameters.width : 800;
-	var fullHeight = parameters.height !== undefined ? parameters.height : 600;
+	var _devicePixelRatioNbr = parameters.devicePixelRatio !== undefined
+				? parameters.devicePixelRatio
+				: window.devicePixelRatio !== undefined
+					? window.devicePixelRatio
+					: 1;
+
+
+	var fullWidth =  _devicePixelRatioNbr * (parameters.width !== undefined) ? parameters.width : 800;
+	var fullHeight =  _devicePixelRatioNbr * (parameters.height !== undefined) ? parameters.height : 600;
 	var currentScale = parameters.scale !== undefined ? parameters.scale : 1;
 
 	var scaledWidth = Math.floor( currentScale * fullWidth );
@@ -24,8 +32,9 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 
 	if ( this.renderer === undefined ) {
 
-		this.renderer = new THREE.WebGLRenderer( { alpha: false, antialias: false } );
-		this.renderer.setSize( fullWidth, fullHeight );
+		this.renderer = new THREE.WebGLRenderer( { alpha: false, antialias: false, preserveDrawingBuffer: _preserveDrawingBufferInd } );
+		// NOTE: WebGLRenderer itself applies window.devicePixelRatio, so we need to pass the dimensions to it without the ratio applied. 
+		this.renderer.setSize( fullWidth /  _devicePixelRatioNbr, fullHeight /  _devicePixelRatioNbr);
 		this.renderer.setClearColor( new THREE.Color(0x000000), 0 );  //KAD: Changed this from setClearColorHex, which is deprecated.
 
 		this.renderer.autoClear = false;
@@ -920,16 +929,21 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 
 		compositePass.uniforms[ 'samplerLight' ].value = compLight.renderTarget2;
 
+		var devicePixelRatioNbr = (window.devicePixelRatio !== undefined) ? window.devicePixelRatio : 1;
+
+
 		effectFXAA.uniforms[ 'resolution' ].value.set( 1 / fullWidth, 1 / fullHeight );
 
 	};
 
 	this.setSize = function ( width, height ) {
 
-		fullWidth = width;
-		fullHeight = height;
+		// NOTE: We have to apply the device's pixel ratio to our dimension values; however, the underlying renderer in this class is
+		// WebGLRenderer, which already applies this ratio itself. So we want to pass the raw dimensional numbers into it.
+		this.renderer.setSize( width, height );
 
-		this.renderer.setSize( fullWidth, fullHeight );
+		fullWidth = width *  _devicePixelRatioNbr;
+		fullHeight = height *  _devicePixelRatioNbr;
 
 		this.setScale( currentScale );
 
