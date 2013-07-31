@@ -48,7 +48,7 @@
 	/**********************
 	 * Global variables
 	 **********************/
-	var _camera, _scene, _stats, _clock, _deltaTm, _currTm, _animationFrameId, firstFrameInd = true;
+	var _camera, _scene, _stats, _clock, _deltaTm, _currTm, _animationFrameId;
 	var	_effectController;
 	var _canvasWidth = window.innerWidth, _canvasHeight = window.innerHeight;
 	var _lightSources = [], _lightGeoms = [], _lights = [];
@@ -390,7 +390,7 @@
 		floorMap.anisotropy = 4;
 
 		// The lower the specular value is, the less shiny the material will be. The closer it is to the diffuse color, the more it will look like metal.
-		var concreteMat = new THREE.MeshPhongMaterial({color: 0x808080, ambient: 0xFFFFFF, specular: 0x141414, shininess: 05, map: floorMap, bumpMap: floorMap, bumpScale: 0.25});
+		var concreteMat = new THREE.MeshPhongMaterial({color: 0xB5B5B5, ambient: 0xFFFFFF, specular: 0x404040, shininess: 10, map: floorMap, bumpMap: floorMap, bumpScale: 0.25});
 		var floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_NBRS.WIDTH, ROOM_NBRS.DEPTH), concreteMat);
 		//floor.rotation.y = Math.PI;  // The repetition of the pattern is less obvious from the side.
 		floor.rotation.x = -Math.PI/2;
@@ -685,8 +685,6 @@
 
 		// Render
 		_renderer.render(_scene, _camera);
-
-		firstFrameInd = false;
 	}
 
 
