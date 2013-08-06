@@ -51,7 +51,7 @@
 	var _camera, _scene, _stats, _clock, _deltaTm, _currTm, _animationFrameId;
 	var	_effectController;
 	var _canvasWidth = window.innerWidth, _canvasHeight = window.innerHeight;
-	var _lightSources = [], _lightGeoms = [], _lights = [];
+	var _lightSources = [], _lights = [], _sculptureLightMat, _mergedLightsGeom, _mergedLightsMesh;
 	var _lightHeightNbr, _lightHeightDirNbr, _lightHeightChgIncrmntNbr;
 	var _availablePatterns = [], _activePatterns = [];
 	var _patternIdCnt = 0, _patternReleaseInd = false, _prevPatternReleaseTm = 0;
@@ -273,11 +273,14 @@
 	 * Initializes all of the lights.
 	 */
 	function initLights() {
-		//AmbientLight is not currently supported in WebGLDeferred_renderer, so we are using a directional light instead.
+		//AmbientLight is not currently supported in WebGLDeferred_renderer, so we are using a hemisphere light instead.
 		//_scene.add(new THREE.AmbientLight(0xFFFFFF));
 
-		var directionalLight = new THREE.HemisphereLight(LIGHT_CLRS.ON.getHex(), LIGHT_CLRS.ON.getHex(), LIGHT_INTENSITY_NBRS.HEMI);
-		_scene.add(directionalLight);
+		var hemisphereLight = new THREE.HemisphereLight(LIGHT_CLRS.ON.getHex(), LIGHT_CLRS.ON.getHex(), LIGHT_INTENSITY_NBRS.HEMI);
+		_scene.add(hemisphereLight);
+
+		_mergedLightsGeom = new THREE.Geometry();
+
 
 		for (var i = 0; i < LIGHT_NBRS.ROWS; i++) {
 
@@ -285,6 +288,20 @@
 				crteSculptureLight(i, j);
 			}
 		}
+
+		// Setting vertexColors = FaceColors allows you to set the color of each face independently.
+		// NOTE: Set the mesh ambient and diffuse colors to the full intensity of the lights they represent; otherwise, they will not glow.
+		_sculptureLightMat = new THREE.MeshBasicMaterial( {color: LIGHT_CLRS.ON.getHex(), ambient: LIGHT_CLRS.ON.getHex(), vertexColors: THREE.FaceColors} );
+		_mergedLightsMesh = new THREE.Mesh(_mergedLightsGeom, _sculptureLightMat);
+
+		// Now set ALL the faces to the desired "off" color and set colorsNeedUpdate to true. This will cause the lights to appear off upon first render.
+		// faceCnt = _mergedLightsGeom.faces.length
+		for (var idx = 0, faceCnt = _mergedLightsGeom.faces.length; idx < faceCnt; idx++) {
+			_mergedLightsGeom.faces[idx].color.setHex(LIGHT_CLRS.OFF.getHex());			
+		}
+		_mergedLightsGeom.colorsNeedUpdate = true;
+
+		_scene.add(_mergedLightsMesh);
 	}
 
 
@@ -347,27 +364,13 @@
 		}
 
 
-		// Ideally we would just use the same geometry for each light, but since we want to be able to alter the color of each light independently,
-		// we will create an independent geometry for each. NOTE: The optimal solution would probably be to create one geometry for the 5-sided case
-		// of each light and then just create unique plane geometries for each light.
 		var sculptureLightGeom = new THREE.CubeGeometry(LIGHT_NBRS.WIDTH, LIGHT_NBRS.DEPTH, LIGHT_NBRS.HEIGHT);
-		_lightGeoms[lightIdx] = sculptureLightGeom;
 
-		// Setting vertexColors = FaceColors allows you to set the color of each face independently.
-		// NOTE: Set the mesh ambient and diffuse colors to the full intensity of the lights they represent; otherwise, they will not glow.
-		var sculptureLightMat = new THREE.MeshBasicMaterial( {color: lightSrc.color.getHex(), ambient: lightSrc.color.getHex(), vertexColors: THREE.FaceColors} );
-
-		// Now set ALL the faces to the desired "off" color and set colorsNeedUpdate to true. This will cause the lights to appear off upon first render.
-		for (var idx = 0, faceCnt = sculptureLightGeom.faces.length; idx < faceCnt; idx++) {
-			sculptureLightGeom.faces[idx].color.setHex(LIGHT_CLRS.OFF.getHex());			
-		}
-		sculptureLightGeom.colorsNeedUpdate = true;
-
-		// Add new properties to the light geometry
+		// Add new properties to the light.
 		sculptureLightGeom.lightIntensityRatioNbr = 0;  // Range of 0-1 of how intensely this light is shining at this time.
 
 
-		var sculptureLight = new THREE.Mesh(sculptureLightGeom, sculptureLightMat);
+		var sculptureLight = new THREE.Mesh(sculptureLightGeom, _sculptureLightMat);
 		_lights[lightIdx] = sculptureLight;
 
 		sculptureLight.position = lightSrc.position;
@@ -375,7 +378,7 @@
 		sculptureLight.scale = lightSrc.scale;
 		sculptureLight.receiveShadow = true;
 
-		_scene.add(sculptureLight);
+		THREE.GeometryUtils.merge(_mergedLightsGeom, sculptureLight);
 	}
 
 
@@ -610,27 +613,6 @@
 
 
 	/*
-	 * For performance reasons we only want to update values when the user actually changes parameters.
-	 */
-	function onParmsChange() {
-		// Update lights
-		var newColor = new THREE.Color();
-		newColor.copy(LIGHT_CLRS.OFF);
-		newColor.lerp(LIGHT_CLRS.ON, _effectController.intensity);
-
-
-		for (var idx = 0, lightCnt = _lightSources.length; idx < lightCnt; idx++) {
-			_lightSources[idx].intensity = _effectController.intensity * LIGHT_INTENSITY_NBRS.MAX;
-
-			_lightGeoms[idx].faces[LIGHT_NBRS.EMITTER_FACE].color.copy(newColor);
-			_lightGeoms[idx].colorsNeedUpdate = true;
-		}
-		
-	}
-
-
-
-	/*
 	 * Creates the animation loop.
 	 */
 	function animate() {
@@ -684,7 +666,11 @@
 
 
 		// Render
+		var startTm = performance.now();
 		_renderer.render(_scene, _camera);
+		var endTm = performance.now();
+
+		//console.log(endTm - startTm);
 	}
 
 
@@ -743,7 +729,7 @@
 	function animateLightIntensities() {
 
 		var newActivePatterns = [], thisLightGeom, thisPattern, thisPatternPropIdTxt, intensityRatioNbr, 
-			patternIdx = 0, patternCnt = _activePatterns.length, lightIdx = 0, lightCnt = _lightGeoms.length, newColor = new THREE.Color();
+			patternIdx = 0, patternCnt = _activePatterns.length, lightIdx = 0, lightCnt = _lights.length, newColor = new THREE.Color();
 
 
 		// First loop through the active patterns to update their properties to represent this render frame.
@@ -764,7 +750,7 @@
 		// Next loop through each light, accumulating the effect of each pattern on each one.
 		// NOTE: The lights should be the outermost loop because there are a lot of them. It's far more efficient.
 		for (lightIdx = 0; lightIdx < lightCnt; lightIdx++) {
-			thisLightGeom = _lightGeoms[lightIdx];
+			thisLight = _lights[lightIdx];
 			intensityRatioNbr = 0;
 
 			for (patternIdx = 0; patternIdx < patternCnt; patternIdx++) {
@@ -775,10 +761,10 @@
 				if (thisPattern.isPointInside(_lights[lightIdx].position)) {
 
 					// Update this pattern's existing effect on this light.
-					if (thisLightGeom[thisPatternPropIdTxt] === undefined) {
-						thisLightGeom[thisPatternPropIdTxt] = thisPattern.lightIntensityRatioIncrmntNbr;
+					if (thisLight[thisPatternPropIdTxt] === undefined) {
+						thisLight[thisPatternPropIdTxt] = thisPattern.lightIntensityRatioIncrmntNbr;
 					} else {
-						thisLightGeom[thisPatternPropIdTxt] = Math.min(1, thisLightGeom[thisPatternPropIdTxt] + thisPattern.lightIntensityRatioIncrmntNbr);
+						thisLight[thisPatternPropIdTxt] = Math.min(1, thisLight[thisPatternPropIdTxt] + thisPattern.lightIntensityRatioIncrmntNbr);
 					}
 
 					// Keep those patterns which have affected a light.
@@ -786,15 +772,15 @@
 						newActivePatterns.push(thisPattern);
 					}
 				
-				} else if (thisLightGeom[thisPatternPropIdTxt] !== undefined && thisLightGeom[thisPatternPropIdTxt] > 0) {
+				} else if (thisLight[thisPatternPropIdTxt] !== undefined && thisLight[thisPatternPropIdTxt] > 0) {
 					// This light was previously touched by this pattern, so we must dim it accordingly.
 
 					// Update this pattern's existing effect on this light.
-					thisLightGeom[thisPatternPropIdTxt] = Math.max(0, thisLightGeom[thisPatternPropIdTxt] - thisPattern.lightIntensityRatioIncrmntNbr);
+					thisLight[thisPatternPropIdTxt] = Math.max(0, thisLight[thisPatternPropIdTxt] - thisPattern.lightIntensityRatioIncrmntNbr);
 
 					// If this pattern's effect has been completely removed from the light, delete the pattern's property from it.
-					if (thisLightGeom[thisPatternPropIdTxt] <= 0) {
-						delete thisLightGeom[thisPatternPropIdTxt];
+					if (thisLight[thisPatternPropIdTxt] <= 0) {
+						delete thisLight[thisPatternPropIdTxt];
 					} else {
 						// Keep those patterns which have affected a light.
 						if (newActivePatterns.indexOf(thisPattern) === -1) {
@@ -803,25 +789,25 @@
 					}
 				}
 
-				if (thisLightGeom[thisPatternPropIdTxt]) {
-					intensityRatioNbr += thisLightGeom[thisPatternPropIdTxt];
+				if (thisLight[thisPatternPropIdTxt]) {
+					intensityRatioNbr += thisLight[thisPatternPropIdTxt];
 				}
 			}
 
-			thisLightGeom.lightIntensityRatioNbr = Math.min(1, intensityRatioNbr);
+			thisLight.lightIntensityRatioNbr = Math.min(1, intensityRatioNbr);
 
 			// Update the emitter face color
 			newColor.copy(LIGHT_CLRS.OFF);
-			newColor.lerp(LIGHT_CLRS.ON, thisLightGeom.lightIntensityRatioNbr);
+			newColor.lerp(LIGHT_CLRS.ON, thisLight.lightIntensityRatioNbr);
 
 			// For performance, do not update a face's color if we do not have to.
-			if (thisLightGeom.faces[LIGHT_NBRS.EMITTER_FACE].color.getHex() !== newColor.getHex()) {
-				thisLightGeom.faces[LIGHT_NBRS.EMITTER_FACE].color.copy(newColor);
-				thisLightGeom.colorsNeedUpdate = true;
+			if (_mergedLightsMesh.geometry.faces[(lightIdx * 6) + LIGHT_NBRS.EMITTER_FACE].color.getHex() !== newColor.getHex()) {
+				_mergedLightsMesh.geometry.faces[(lightIdx * 6) + LIGHT_NBRS.EMITTER_FACE].color.copy(newColor);
+				_mergedLightsMesh.geometry.colorsNeedUpdate = true;
 			}
 
 			// Update the area light's intensity
-			_lightSources[lightIdx].intensity = thisLightGeom.lightIntensityRatioNbr * LIGHT_INTENSITY_NBRS.MAX;
+			_lightSources[lightIdx].intensity = thisLight.lightIntensityRatioNbr * LIGHT_INTENSITY_NBRS.MAX;
 		}
 
 

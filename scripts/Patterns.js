@@ -139,9 +139,11 @@ BoxPattern.prototype.isPointInside = function (inpPoint) {
 			minX = vertex.x;
 		}
 
+		/* We will ignore height for now.
 		if (vertex.y < minY || minY == undefined) {
 			minY = vertex.y;
 		}
+		*/
 
 		if (vertex.z < minZ || minZ == undefined) {
 			minZ = vertex.z;
@@ -151,9 +153,11 @@ BoxPattern.prototype.isPointInside = function (inpPoint) {
 			maxX = vertex.x;
 		}
 
+		/* We will ignore height for now.
 		if (vertex.y > maxY || maxY == undefined) {
 			maxY = vertex.y;
 		}
+		*/
 
 		if (vertex.z > maxZ || maxZ == undefined) {
 			maxZ = vertex.z;
