@@ -519,7 +519,7 @@
 
 		// The lower the specular value is, the less shiny the material will be. The closer it is to the diffuse color, the more it will look like metal.
 		//var pedestalMat = new THREE.MeshPhongMaterial( { color: 0xC90000, ambient: 0xC90000, specular: 0xFF0000, shininess: 20} );
-		var pedestalMat = new THREE.MeshPhongMaterial( { color: 0x94611D, ambient: 0x94611D, specular: 0x94611D, shininess: 10, map: pedestalMap } );
+		var pedestalMat = new THREE.MeshPhongMaterial( { color: 0x543710, ambient: 0x543710, specular: 0x543710, shininess: 10, map: pedestalMap } );
 
 		var pedestalGeom = new THREE.CubeGeometry(PEDESTAL_NBRS.WIDTH, PEDESTAL_NBRS.HEIGHT, PEDESTAL_NBRS.DEPTH);
 
