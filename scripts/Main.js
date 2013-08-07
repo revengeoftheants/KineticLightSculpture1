@@ -31,7 +31,8 @@
 	var LIGHTS_FAR_STRT_COORD_NBR = -(LIGHT_NBRS.ROWS * (LIGHT_NBRS.HEIGHT + LIGHT_NBRS.MARGIN))/2 + LIGHT_NBRS.MARGIN;
 	var LIGHT_CLRS = {ON: new THREE.Color(0xE5D9CA), OFF: new THREE.Color(0x090909)};   // ON: new THREE.Color(0xFFF1E0)
 	var LIGHT_INTENSITY_NBRS = {START: 0.0, MAX: 4, HEMI: 0.2};
-	var ROOM_NBRS = {WIDTH: 800, DEPTH: 600, HEIGHT: 80};
+	var ROOM_NBRS = {WIDTH: 2000, DEPTH: 2000, HEIGHT: 80};
+	var PEDESTAL_NBRS = {WIDTH: 10, HEIGHT: 12, DEPTH: 10};
 	var TORUS_KNOT_NBRS = {KNOT_RADIUS: 10, TUBE_RADIUS: 1.5, RADIAL_SEGMENTS: 11, TUBE_SEGMENTS: 30, COPRIME_INT_P: 2, COPRIME_INT_Q: 3};
 	var SCULPTURE_ROTATE_NBRS = {MAX_SPEED: 1, START_LERP_TM: 8, START_LERP_TM_MS: 8000, END_LERP_TM_MS: 33000};
 	var ROLLING_AVG_NBRS = {SAMPLES_CNT: 20};
@@ -51,11 +52,11 @@
 	var _camera, _scene, _stats, _clock, _deltaTm, _currTm, _animationFrameId;
 	var	_effectController;
 	var _canvasWidth = window.innerWidth, _canvasHeight = window.innerHeight;
-	var _lightSources = [], _lights = [], _sculptureLightMat, _mergedLightsGeom, _mergedLightsMesh;
+	var _lightSources = [], _lights = [], _lightMat, _mergedLightsGeom, _mergedLightsMesh;
 	var _lightHeightNbr, _lightHeightDirNbr, _lightHeightChgIncrmntNbr;
 	var _availablePatterns = [], _activePatterns = [];
 	var _patternIdCnt = 0, _patternReleaseInd = false, _prevPatternReleaseTm = 0;
-	var _torusKnot;
+	var _sculpture;
 	var _sculptureRotateInd = false, _sculptureElapsedRotationDstncNbr = 0, _sculptureElapsedLerpTm = 0;
 	var _rollingAvgBeatLvLs = [ROLLING_AVG_NBRS.SAMPLES_CNT], _rollingAvgBeatLvlNbr = 0;
 	var _audioTrack;
@@ -273,12 +274,81 @@
 	 * Initializes all of the lights.
 	 */
 	function initLights() {
-		//AmbientLight is not currently supported in WebGLDeferred_renderer, so we are using a hemisphere light instead.
+		//AmbientLight is not currently supported in WebGLDeferredRenderer, so we are using a hemisphere light instead.
 		//_scene.add(new THREE.AmbientLight(0xFFFFFF));
 
-		var hemisphereLight = new THREE.HemisphereLight(LIGHT_CLRS.ON.getHex(), LIGHT_CLRS.ON.getHex(), LIGHT_INTENSITY_NBRS.HEMI);
-		_scene.add(hemisphereLight);
+		//var hemisphereLight = new THREE.HemisphereLight(LIGHT_CLRS.ON.getHex(), LIGHT_CLRS.ON.getHex(), LIGHT_INTENSITY_NBRS.HEMI);
+		//_scene.add(hemisphereLight);
 
+		// Ceiling lights
+		var ceilingCenterLight = new THREE.AreaLight(LIGHT_CLRS.ON.getHex(), 10);
+		ceilingCenterLight.width = Math.abs(LIGHTS_LEFT_STRT_COORD_NBR * 2);
+		ceilingCenterLight.height = 20;
+		ceilingCenterLight.position.copy(CAM.LOOK_AT_POS);
+		ceilingCenterLight.position.y += CAM.ORBIT_RADIUS_NBR;
+
+		var phiDegNbr = 45;
+		var thetaDegNbr = 45;
+		var lightPos = new THREE.Vector3();
+		var lightPhiRadianNbr = phiDegNbr * Math.PI/180;
+		var lightThetaRadianNbr = thetaDegNbr * Math.PI/180;
+		lightPos.x = Math.sin(lightPhiRadianNbr) * Math.sin(lightThetaRadianNbr);
+		lightPos.y = Math.cos(lightPhiRadianNbr);
+		lightPos.z = Math.sin(lightPhiRadianNbr) * Math.cos(lightThetaRadianNbr);
+		//lightPos.normalize().multiplyScalar(CAM.ORBIT_RADIUS_NBR);  // Multiply the normalized position by the camera's orbit radius
+		lightPos.normalize().multiplyScalar(100);
+		lightPos.applyMatrix4(_camOrbitTranslationMatrix);  // Translate the position from the origin to the orbit center (i.e. the look-at position)
+
+		var ceilingRightLight = new THREE.AreaLight(LIGHT_CLRS.ON.getHex(), 7);
+		ceilingRightLight.position.copy(lightPos);
+		// Align the light's Y axis with the look-at vector between this light and the center of our camera scene.
+		var lookAtVector = ceilingRightLight.position.clone().sub(CAM.LOOK_AT_POS).normalize();
+		var rotationAxis = ceilingRightLight.up.clone().cross(lookAtVector);
+		var dotProdNbr = lookAtVector.clone().dot(ceilingRightLight.up);
+		var angleRadianNbr = Math.acos(dotProdNbr / (ceilingRightLight.up.length() * lookAtVector.length()));
+		ceilingRightLight.rotateOnAxis(rotationAxis, angleRadianNbr);
+
+
+		var ceilingLeftLight = new THREE.AreaLight(LIGHT_CLRS.ON.getHex(), 7);
+		//ceilingLeftLight.width = ceilingRightLight.width = Math.abs(LIGHTS_LEFT_STRT_COORD_NBR * 2);
+		ceilingLeftLight.width = ceilingRightLight.width = 1;
+		ceilingLeftLight.height = ceilingRightLight.height = 1;
+		lightPos.x *= -1;
+		lightPos.z *= -1;
+		ceilingLeftLight.position.copy(lightPos);
+		// Align the light's Y axis with the look-at vector between this light and the center of our camera scene.
+		lookAtVector = ceilingLeftLight.position.clone().sub(CAM.LOOK_AT_POS).normalize();
+		rotationAxis = ceilingLeftLight.up.clone().cross(lookAtVector);
+		dotProdNbr = lookAtVector.clone().dot(ceilingLeftLight.up);
+		angleRadianNbr = Math.acos(dotProdNbr / (ceilingLeftLight.up.length() * lookAtVector.length()));
+		ceilingLeftLight.rotateOnAxis(rotationAxis, angleRadianNbr);
+
+
+		// Upward lights (because WebGL)
+		var upLight = new THREE.AreaLight(LIGHT_CLRS.ON.getHex(), 4.5);
+		upLight.position.y = LIGHT_NBRS.MIN_HEIGHT - 10;
+		upLight.rotation.setX(180 * Math.PI/180);
+		upLight.width = Math.abs(LIGHTS_LEFT_STRT_COORD_NBR * 2);
+		upLight.height = Math.abs(LIGHTS_FAR_STRT_COORD_NBR * 2);
+
+
+		ceilingCenterLight.angle = ceilingRightLight.angle = ceilingLeftLight.angle = upLight.angle = Math.PI/8;  // Should not go past PI/2.
+		ceilingCenterLight.castShadow = ceilingRightLight.castShadow = ceilingLeftLight.castShadow = upLight.castShadow = true;
+		ceilingCenterLight.shadow_cameraNear = ceilingRightLight.shadow_cameraNear = ceilingLeftLight.shadow_cameraNear = upLight.shadow_cameraNear = 0.1;  // Set the near plane for the shadow _camera frustum as close to the light as possible.
+		ceilingCenterLight.shadow_cameraFov = ceilingRightLight.shadow_cameraFov = ceilingLeftLight.shadow_cameraFov = upLight.shadow_cameraFov = 500;  // Default is 50.
+		ceilingCenterLight.shadow_cameraVisible = ceilingRightLight.shadow_cameraVisible = ceilingLeftLight.shadow_cameraVisible = upLight.shadow_cameraVisible = false;  // Does not apply to WebGLDeferredRenderer.
+
+		_scene.add(ceilingCenterLight);
+		//_scene.add(ceilingRightLight);
+		//_scene.add(ceilingLeftLight);
+		_scene.add(upLight);
+
+		var lightHelper = new THREE.AxisHelper(100);
+		//upLight.add(lightHelper);
+
+
+
+		// Sculpture lights
 		_mergedLightsGeom = new THREE.Geometry();
 
 
@@ -290,9 +360,9 @@
 		}
 
 		// Setting vertexColors = FaceColors allows you to set the color of each face independently.
-		// NOTE: Set the mesh ambient and diffuse colors to the full intensity of the lights they represent; otherwise, they will not glow.
-		_sculptureLightMat = new THREE.MeshBasicMaterial( {color: LIGHT_CLRS.ON.getHex(), ambient: LIGHT_CLRS.ON.getHex(), vertexColors: THREE.FaceColors} );
-		_mergedLightsMesh = new THREE.Mesh(_mergedLightsGeom, _sculptureLightMat);
+		// _lightMat = new THREE.MeshBasicMaterial( {color: LIGHT_CLRS.ON.getHex(), ambient: LIGHT_CLRS.OFF.getHex(), vertexColors: THREE.FaceColors} );
+		_lightMat = new THREE.MeshPhongMaterial( {color: LIGHT_CLRS.ON.getHex(), ambient: LIGHT_CLRS.OFF.getHex(), shininess: 10, vertexColors: THREE.FaceColors} );
+		_mergedLightsMesh = new THREE.Mesh(_mergedLightsGeom, _lightMat);
 
 		// Now set ALL the faces to the desired "off" color and set colorsNeedUpdate to true. This will cause the lights to appear off upon first render.
 		// faceCnt = _mergedLightsGeom.faces.length
@@ -312,14 +382,21 @@
 		var gui = new dat.GUI();
 
 		_effectController = {
-			intensity: LIGHT_INTENSITY_NBRS.START,
 			muteInd: false,
 			patternCnt: 3
 		};
 
-		//gui.add(_effectController, "intensity", 0.00, 1.00).step(0.01).onChange(onParmsChange);
 		gui.add(_effectController, "muteInd").name("No Music");
 		gui.add(_effectController, "patternCnt", 0, PATTERN_NBRS.MAX_CNT).step(1).name("Pattern Count");
+	}
+
+
+
+	/*
+	 * For performance reasons we only want to update values when the user actually changes parameters.
+	 */
+	function onParmsChange() {
+
 	}
 
 
@@ -333,15 +410,6 @@
 
 		var lightIdx = inpLightRowIdx * LIGHT_NBRS.COLS + inpLightColIdx;
 
-		var lightSrc = new THREE.AreaLight(LIGHT_CLRS.ON.getHex(), LIGHT_INTENSITY_NBRS.START);
-		_lightSources[lightIdx] = lightSrc;
-		//lightSrc = new THREE.SpotLight(LIGHT_CLRS.ON.getHex(), sculptureLightIntensityNbr, 250);
-		lightSrc.angle = Math.PI/2;  // Should not go past PI/2.
-		lightSrc.castShadow = true;
-		lightSrc.shadow_cameraNear = 0.1;  // Set the near plane for the shadow _camera frustum as close to the light as  possible.
-		lightSrc.shadow_cameraFov = 130;  // Default is 50.
-		lightSrc.shadow_cameraVisible = false;  // Does not apply to WebGLDeferred_renderer.
-
 		var lightXCoordNbr = LIGHTS_LEFT_STRT_COORD_NBR + (inpLightColIdx * (LIGHT_NBRS.WIDTH + LIGHT_NBRS.MARGIN));
 		var lightZCoordNbr = LIGHTS_FAR_STRT_COORD_NBR + (inpLightRowIdx * (LIGHT_NBRS.HEIGHT + LIGHT_NBRS.MARGIN));
 
@@ -353,32 +421,40 @@
 							(Math.sin(210 * ((inpLightRowIdx + (inpLightColIdx * 2.8)) * 0.45)/360) * 1.5) +
 							LIGHT_NBRS.MIN_HEIGHT;
 
-		lightSrc.position.set(lightXCoordNbr, _lightHeightNbr, lightZCoordNbr);
-		lightSrc.width = 1;
-		lightSrc.height = 1;
+
+		var lightGeom = new THREE.CubeGeometry(LIGHT_NBRS.WIDTH, LIGHT_NBRS.DEPTH, LIGHT_NBRS.HEIGHT);
+
+		// Add new properties to the light.
+		lightGeom.lightIntensityRatioNbr = 0;  // Range of 0-1 of how intensely this light is shining at this time.
 
 
-		// Having many lights in a _scene is expensive so we will only add a light source at a certain interval.
+		var light = new THREE.Mesh(lightGeom, _lightMat);
+		_lights[lightIdx] = light;
+
+		light.position.set(lightXCoordNbr, _lightHeightNbr, lightZCoordNbr);
+		light.width = LIGHT_NBRS.WIDTH;
+		light.height = LIGHT_NBRS.HEIGHT;
+		light.receiveShadow = true;
+		
+		// Merge the meshes in order to keep our WebGL draw() calls to a minimum.
+		THREE.GeometryUtils.merge(_mergedLightsGeom, light);
+
+
+		var lightSrc = new THREE.AreaLight(LIGHT_CLRS.ON.getHex(), LIGHT_INTENSITY_NBRS.START);
+		_lightSources[lightIdx] = lightSrc;
+		// Position the light source at the emitter face surface. This will minimize how much lights at lower heights reflect lights from above.
+		lightSrc.position.set(light.position.x, light.position.y - (LIGHT_NBRS.DEPTH / 2), light.position.z);
+		lightSrc.scale = light.scale;
+		lightSrc.angle = 0;  // Should not go past PI/2.
+		lightSrc.castShadow = true;
+		lightSrc.shadow_cameraNear = 0.1;  // Set the near plane for the shadow _camera frustum as close to the light as possible.
+		lightSrc.shadow_cameraFov = 130;  // Default is 50.
+		lightSrc.shadow_cameraVisible = false;  // Does not apply to WebGLDeferredRenderer.
+
+		// Having many light sources in a _scene is expensive so we will only add a light source at a certain interval.
 		if (lightIdx % LIGHT_NBRS.SRC_INTRVL === 0) {
 			_scene.add(lightSrc);
 		}
-
-
-		var sculptureLightGeom = new THREE.CubeGeometry(LIGHT_NBRS.WIDTH, LIGHT_NBRS.DEPTH, LIGHT_NBRS.HEIGHT);
-
-		// Add new properties to the light.
-		sculptureLightGeom.lightIntensityRatioNbr = 0;  // Range of 0-1 of how intensely this light is shining at this time.
-
-
-		var sculptureLight = new THREE.Mesh(sculptureLightGeom, _sculptureLightMat);
-		_lights[lightIdx] = sculptureLight;
-
-		sculptureLight.position = lightSrc.position;
-		sculptureLight.rotation = lightSrc.rotation;
-		sculptureLight.scale = lightSrc.scale;
-		sculptureLight.receiveShadow = true;
-
-		THREE.GeometryUtils.merge(_mergedLightsGeom, sculptureLight);
 	}
 
 
@@ -428,6 +504,45 @@
 		rightWall.receiveShadow = true;
 		_scene.add(rightWall);
 		*/
+	}
+
+
+
+	/*
+	 * Adds additional objects to the scene.
+	 */
+	function addSceneObjs() {
+		var pedestalMap = THREE.ImageUtils.loadTexture( "textures/copper-tan-grunge.jpg" );
+		pedestalMap.wrapS = pedestalMap.wrapT = THREE.RepeatWrapping;
+		pedestalMap.repeat.set(1, 1);
+		pedestalMap.anisotropy = 4;
+
+		// The lower the specular value is, the less shiny the material will be. The closer it is to the diffuse color, the more it will look like metal.
+		//var pedestalMat = new THREE.MeshPhongMaterial( { color: 0xC90000, ambient: 0xC90000, specular: 0xFF0000, shininess: 20} );
+		var pedestalMat = new THREE.MeshPhongMaterial( { color: 0x94611D, ambient: 0x94611D, specular: 0x94611D, shininess: 10, map: pedestalMap } );
+
+		var pedestalGeom = new THREE.CubeGeometry(PEDESTAL_NBRS.WIDTH, PEDESTAL_NBRS.HEIGHT, PEDESTAL_NBRS.DEPTH);
+
+		var pedestal = new THREE.Mesh(pedestalGeom, pedestalMat);
+		pedestal.position.x = 0;
+		pedestal.position.y = PEDESTAL_NBRS.HEIGHT/2;
+		pedestal.position.z = 0;
+		pedestal.receiveShadow = true;
+		_scene.add(pedestal);
+
+
+		//Note: The 5th and 6th parameters must be coprime; otherwise, the result will be a torus link.
+		var sculptureGeom = new THREE.TorusKnotGeometry(TORUS_KNOT_NBRS.KNOT_RADIUS, TORUS_KNOT_NBRS.TUBE_RADIUS,
+														TORUS_KNOT_NBRS.RADIAL_SEGMENTS, TORUS_KNOT_NBRS.TUBE_SEGMENTS, 
+														TORUS_KNOT_NBRS.COPRIME_INT_P, TORUS_KNOT_NBRS.COPRIME_INT_Q);
+
+
+		var sculptureMat = new THREE.MeshPhongMaterial( { color: 0xFFFFFF, ambient: 0xFFFFFF, specular: LIGHT_CLRS.ON.getHex(), shininess: 100} );
+
+		_sculpture = new THREE.Mesh(sculptureGeom, sculptureMat);
+		_sculpture.position.set(0, 30, 0);
+		_sculpture.receiveShadow = true;
+		_scene.add(_sculpture);
 	}
 
 
@@ -576,43 +691,6 @@
 
 
 	/*
-	 * Adds additional objects to the scene.
-	 */
-	function addSceneObjs() {
-		var boxWidthNbr = 10;
-		var boxHeightNbr = boxWidthNbr + boxWidthNbr/4;
-		var showFrame = true;
-
-		// The lower the specular value is, the less shiny the material will be. The closer it is to the diffuse color, the more it will look like metal.
-		var boxMat = new THREE.MeshPhongMaterial( { color: "#FFFFFF", ambient: "#FFFFFF", specular: "#FFFFFF", shininess: 10} );		
-
-		var boxGeom = new THREE.CubeGeometry(boxWidthNbr, boxHeightNbr, boxWidthNbr);
-
-		var box = new THREE.Mesh(boxGeom, boxMat);
-		box.position.x = 0;
-		box.position.y = boxHeightNbr/2;
-		box.position.z = 0;
-		box.receiveShadow = true;
-		_scene.add(box);
-
-
-		//Note: The 5th and 6th parameters must be coprime; otherwise, the result will be a torus link.
-		var torusKnotGeom = new THREE.TorusKnotGeometry(TORUS_KNOT_NBRS.KNOT_RADIUS, TORUS_KNOT_NBRS.TUBE_RADIUS,
-														TORUS_KNOT_NBRS.RADIAL_SEGMENTS, TORUS_KNOT_NBRS.TUBE_SEGMENTS, 
-														TORUS_KNOT_NBRS.COPRIME_INT_P, TORUS_KNOT_NBRS.COPRIME_INT_Q);
-
-		var torusKnotMat = new THREE.MeshPhongMaterial( { color: "#FFFFFF", ambient: "#FFFFFF", specular: "#FFFFFF", shininess: 10} );
-
-		_torusKnot = new THREE.Mesh(torusKnotGeom, torusKnotMat);
-		_torusKnot.position.set(0, 30, 0);
-		_torusKnot.receiveShadow = true;
-		_scene.add(_torusKnot);
-		
-	}
-
-
-
-	/*
 	 * Creates the animation loop.
 	 */
 	function animate() {
@@ -630,10 +708,9 @@
 	function render() {
 		_deltaTm = _clock.getDelta();
 		_currTm = _clock.getElapsedTime();
-		
-		// Update _camera
-		TWEEN.update();
 
+		// Update camera
+		TWEEN.update();
 
 		// Update audio
 		AudioAnalyzer.SetMuteState(_effectController.muteInd);
@@ -879,7 +956,7 @@
 				rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, _sculptureElapsedLerpTm/SCULPTURE_ROTATE_NBRS.START_LERP_TM);
 			}
 
-			_torusKnot.useQuaternion = true;
+			_sculpture.useQuaternion = true;
 			var quat = new THREE.Quaternion();
 
 			// Note: We don't want to calculate distance directly from the overall elapsed time because that doesn't work when we went to decelerate
@@ -889,7 +966,7 @@
 			quat.setFromAxisAngle( new THREE.Vector3(0, 0.8, 0.2), _sculptureElapsedRotationDstncNbr);
 
 			quat.normalize();  // Normalize the quaternion or else you will get a distorted shape.
-			_torusKnot.quaternion = quat;
+			_sculpture.quaternion = quat;
 		}
 
 
@@ -1035,7 +1112,6 @@
 		newCamPos.multiplyScalar(CAM.ORBIT_RADIUS_NBR);  // Multiply the normalized camera position by the camera's orbit radius
 		newCamPos.applyMatrix4(_camOrbitTranslationMatrix);  // Translate the position from the origin to the orbit center (i.e. the look-at position)
 		_camera.position.copy(newCamPos);
-
 
 		
 		if (currWaypoint.orientationEndQuats.length === 0) {
