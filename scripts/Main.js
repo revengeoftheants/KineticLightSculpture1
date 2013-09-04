@@ -25,7 +25,7 @@
 	var SCALE = 1;
 	var CAM = {ORBIT_RADIUS_NBR: 180, FOV_ANGLE_NBR: 46, NEAR_PLANE_NBR: 1, FAR_PLANE_NBR: 5000, LOOK_AT_POS: new THREE.Vector3(0, 45, 0)};
 	// Keep the number of lights low because they are expensive for the GPU to calculate
-	var LIGHT_NBRS = {ROWS: 13, COLS: 38, SRC_INTRVL: 34, WIDTH: 3, HEIGHT: 3, DEPTH: 0.5, MARGIN: 1, EMITTER_FACE: 3, MIN_HEIGHT: 65};
+	var LIGHT_NBRS = {ROWS: 13, COLS: 38, SRC_INTRVL: 34, WIDTH: 3, HEIGHT: 3, DEPTH: 0.5, MARGIN: 1, EMITTER_FACE: 6, MIN_HEIGHT: 65};
 	var LIGHT_CNT = LIGHT_NBRS.ROWS * LIGHT_NBRS.COLS;
 	var LIGHTS_LEFT_STRT_COORD_NBR = -(LIGHT_NBRS.COLS * (LIGHT_NBRS.WIDTH + LIGHT_NBRS.MARGIN))/2 + LIGHT_NBRS.MARGIN;
 	var LIGHTS_FAR_STRT_COORD_NBR = -(LIGHT_NBRS.ROWS * (LIGHT_NBRS.HEIGHT + LIGHT_NBRS.MARGIN))/2 + LIGHT_NBRS.MARGIN;
@@ -58,7 +58,6 @@
 	var _patternIdCnt = 0, _patternReleaseInd = false, _prevPatternReleaseTm = 0;
 	var _sculpture;
 	var _sculptureRotateInd = false, _sculptureElapsedRotationDstncNbr = 0, _sculptureElapsedLerpTm = 0;
-	var _rollingAvgBeatLvLs = [ROLLING_AVG_NBRS.SAMPLES_CNT], _rollingAvgBeatLvlNbr = 0;
 	var _audioTrack;
 	var _camPathWaypointsSeq = [], _currWaypointIdx = 0, _waypointTweens = [], _currCamPathTweenDat = {interpolantNbr: 0}, _currCamOrientTweenDat = {interpolantNbr: 0};
 	var _camOrbitTranslationMatrix = new THREE.Matrix4();
@@ -126,7 +125,6 @@
 			loadAudio();
 			
 			addContextLostListener();
-			_rollingAvgBeatLvLs = initArray(_rollingAvgBeatLvLs, 0);
 
 			
 			$(window).load( function() {
@@ -327,7 +325,7 @@
 		// Upward lights (because WebGL)
 		var upLight = new THREE.AreaLight(LIGHT_CLRS.ON.getHex(), 4.5);
 		upLight.position.y = LIGHT_NBRS.MIN_HEIGHT - 10;
-		upLight.rotation.setX(180 * Math.PI/180);
+		upLight.rotation.x = 180 * Math.PI/180;
 		upLight.width = Math.abs(LIGHTS_LEFT_STRT_COORD_NBR * 2);
 		upLight.height = Math.abs(LIGHTS_FAR_STRT_COORD_NBR * 2);
 
@@ -342,9 +340,6 @@
 		//_scene.add(ceilingRightLight);
 		//_scene.add(ceilingLeftLight);
 		_scene.add(upLight);
-
-		var lightHelper = new THREE.AxisHelper(100);
-		//upLight.add(lightHelper);
 
 
 
@@ -390,14 +385,6 @@
 		gui.add(_effectController, "patternCnt", 0, PATTERN_NBRS.MAX_CNT).step(1).name("Pattern Count");
 	}
 
-
-
-	/*
-	 * For performance reasons we only want to update values when the user actually changes parameters.
-	 */
-	function onParmsChange() {
-
-	}
 
 
 	/*
@@ -657,8 +644,6 @@
 	 * Returns a random position along an arc around the sculpture.
 	 */
 	function rtrvRandomPatternStartPos() {
-		// Get a number between PI/2 and 3PI/2.
-		//var randomRadianNbr = (Math.random() * Math.PI) + Math.PI/2;
 		var randomRadianNbr = Math.random() * 2 * Math.PI;
 
 		var xPosnNbr = PATTERN_NBRS.START_POSITION_ARC_RADIUS * Math.cos(randomRadianNbr);
@@ -878,8 +863,12 @@
 			newColor.lerp(LIGHT_CLRS.ON, thisLight.lightIntensityRatioNbr);
 
 			// For performance, do not update a face's color if we do not have to.
-			if (_mergedLightsMesh.geometry.faces[(lightIdx * 6) + LIGHT_NBRS.EMITTER_FACE].color.getHex() !== newColor.getHex()) {
-				_mergedLightsMesh.geometry.faces[(lightIdx * 6) + LIGHT_NBRS.EMITTER_FACE].color.copy(newColor);
+			var lightFaceBaseIdx = lightIdx * 12 + LIGHT_NBRS.EMITTER_FACE;  // Each light box has 12 faces (2 triangles comprising each square face).
+
+			if (_mergedLightsMesh.geometry.faces[lightFaceBaseIdx].color.getHex() !== newColor.getHex()) {
+				// Change the color of both triangles that form this face.
+				_mergedLightsMesh.geometry.faces[lightFaceBaseIdx].color.copy(newColor);
+				_mergedLightsMesh.geometry.faces[lightFaceBaseIdx + 1].color.copy(newColor);
 				_mergedLightsMesh.geometry.colorsNeedUpdate = true;
 			}
 
@@ -1037,27 +1026,6 @@
     }
 
 
-    /*
-     * Calculates the rolling average of beat levels.
-     *
-     * @param inpNewBeatLvlNbr: The new beat level number to include in the average.
-     *
-     * @returns A float.
-     */
-    function calcBeatLvlRollingAvg(inpNewBeatLvlNbr) {
-		_rollingAvgBeatLvLs.shift();
-		_rollingAvgBeatLvLs.push(inpNewBeatLvlNbr);
-
-		var sumNbr = 0;
-
-		for (var idx = 0, lvlCnt = _rollingAvgBeatLvLs.length; idx < lvlCnt; idx++) {
-			sumNbr += _rollingAvgBeatLvLs[idx];
-		}
-
-		return sumNbr/_rollingAvgBeatLvLs.length;
-	}
-
-
 
     /*
      * Linearly interpolates between two numbers.
@@ -1122,24 +1090,6 @@
 				currWaypoint.orientationTweensStartedInd = true;
 			}
 		}
-
-		
-
-
-		// Code that tries to keep camera from flipping to maintain UP vector. However, it just means the camera winds up upsidedown.
-		/*
-		var camLookAtDirection = CAM.LOOK_AT_POS.clone().sub(_camera.position).normalize();
-
-		if (((rtrvNbrSign(camLookAtDirection.x) === -1 * rtrvNbrSign(_prevCamLookAtDirection.x))
-				&& (camLookAtDirection.x !== 0 && _prevCamLookAtDirection.x !== 0) 
-			|| (rtrvNbrSign(camLookAtDirection.z) === -1 * rtrvNbrSign(_prevCamLookAtDirection.z))
-				&& (camLookAtDirection.z !== 0 && _prevCamLookAtDirection.z !== 0))
-			&& Math.abs(camLookAtDirection.y) > 0.98) {
-			_camera.up.y = -_camera.up.y;
-		}
-		
-		_prevCamLookAtDirection.copy(camLookAtDirection);
-		*/
 	}
 
 

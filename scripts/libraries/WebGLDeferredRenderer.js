@@ -7,18 +7,14 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 
 	var _this = this;
 
-	var _camera;  //KAD: Added this to get AreaLight functionality working.
-	var _preserveDrawingBufferInd = parameters.preserveDrawingBuffer !== undefined ? parameters.preserveDrawingBuffer : false;  // KAD: Added this for screen capture.
+    var _preserveDrawingBufferInd = parameters.preserveDrawingBuffer !== undefined ? parameters.preserveDrawingBuffer : false; // KAD: Added this for screen capture.
 
-	var _devicePixelRatioNbr = parameters.devicePixelRatio !== undefined
-				? parameters.devicePixelRatio
-				: window.devicePixelRatio !== undefined
-					? window.devicePixelRatio
-					: 1;
+    // KAD: Added this to handle Retina Displays correctly.
+    var _devicePixelRatioNbr = parameters.devicePixelRatio !== undefined ? parameters.devicePixelRatio : window.devicePixelRatio !== undefined ? window.devicePixelRatio : 1;
 
 
 	var fullWidth =  _devicePixelRatioNbr * (parameters.width !== undefined) ? parameters.width : 800;
-	var fullHeight =  _devicePixelRatioNbr * (parameters.height !== undefined) ? parameters.height : 600;
+    var fullHeight =  _devicePixelRatioNbr * (parameters.height !== undefined) ? parameters.height : 600;
 	var currentScale = parameters.scale !== undefined ? parameters.scale : 1;
 
 	var scaledWidth = Math.floor( currentScale * fullWidth );
@@ -32,10 +28,10 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 
 	if ( this.renderer === undefined ) {
 
-		this.renderer = new THREE.WebGLRenderer( { alpha: false, antialias: false, preserveDrawingBuffer: _preserveDrawingBufferInd } );
-		// NOTE: WebGLRenderer itself applies window.devicePixelRatio, so we need to pass the dimensions to it without the ratio applied. 
-		this.renderer.setSize( fullWidth /  _devicePixelRatioNbr, fullHeight /  _devicePixelRatioNbr);
-		this.renderer.setClearColor( new THREE.Color(0x000000), 0 );  //KAD: Changed this from setClearColorHex, which is deprecated.
+        this.renderer = new THREE.WebGLRenderer( { alpha: false, antialias: false, preserveDrawingBuffer: _preserveDrawingBufferInd } );
+        // NOTE: WebGLRenderer itself applies window.devicePixelRatio, so we need to pass the dimensions to it without the ratio applied. 
+        this.renderer.setSize( fullWidth /  _devicePixelRatioNbr, fullHeight /  _devicePixelRatioNbr);
+        this.renderer.setClearColor( new THREE.Color(0x000000), 0 );  //KAD: Changed this from setClearColorHex, which is deprecated.
 
 		this.renderer.autoClear = false;
 
@@ -48,6 +44,8 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 	var gl = this.renderer.context;
 
 	//
+
+	var currentCamera = null;
 
 	var positionVS = new THREE.Vector3();
 	var directionVS = new THREE.Vector3();
@@ -110,12 +108,12 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 
 	//
 
-	// KAD: Added this for debugging help.
-	_this.getContext = function () {
+    // KAD: Added this for debugging help.
+    _this.getContext = function () {
 
-		return gl;
+        return gl;
 
-	};
+    };
 
 
 
@@ -191,11 +189,11 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 		if ( originalMaterial instanceof THREE.MeshBasicMaterial ) {
 
 			var diffuse = black;
-			var emissive = originalMaterial.color !== undefined ? originalMaterial.color : black; //KAD: Added check for the color property.
+            var emissive = originalMaterial.color !== undefined ? originalMaterial.color : black; //KAD: Added check for the color property.
 
-		} else {
+        } else {
 
-			var diffuse = originalMaterial.color !== undefined ? originalMaterial.color : black; //KAD: Added check for the color property.
+            var diffuse = originalMaterial.color !== undefined ? originalMaterial.color : black; //KAD: Added check for the color property.
 			var emissive = originalMaterial.emissive !== undefined ? originalMaterial.emissive : black;
 
 		}
@@ -352,7 +350,7 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 			uniforms[ "lightRadius" ].value = distance;
 
 			positionVS.getPositionFromMatrix( light.matrixWorld );
-			positionVS.applyMatrix4( _camera.matrixWorldInverse );  //KAD: Changed this to global _camera as a quick hack.
+			positionVS.applyMatrix4( currentCamera.matrixWorldInverse );
 
 			uniforms[ "lightPositionVS" ].value.copy( positionVS );
 
@@ -440,7 +438,7 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 		var light = lightProxy.userData.originalLight;
 		var uniforms = lightProxy.material.uniforms;
 
-		var viewMatrix = _camera.matrixWorldInverse;  //KAD: Changed this to global _camera as a quick hack.
+		var viewMatrix = currentCamera.matrixWorldInverse;
 		var modelMatrix = light.matrixWorld;
 
 		positionVS.getPositionFromMatrix( modelMatrix );
@@ -521,7 +519,7 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 		tempVS.getPositionFromMatrix( light.target.matrixWorld );
 		directionVS.sub( tempVS );
 		directionVS.normalize();
-		directionVS.transformDirection( _camera.matrixWorldInverse ); //KAD: Changed this to global _camera as a quick hack.
+		directionVS.transformDirection( currentCamera.matrixWorldInverse );
 
 		uniforms[ "lightDirectionVS" ].value.copy( directionVS );
 
@@ -586,7 +584,7 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 
 		directionVS.getPositionFromMatrix( light.matrixWorld );
 		directionVS.normalize();
-		directionVS.transformDirection( _camera.matrixWorldInverse );  //KAD: Changed this to global _camera as a quick hack.
+		directionVS.transformDirection( currentCamera.matrixWorldInverse );
 
 		uniforms[ "lightDirectionVS" ].value.copy( directionVS );
 
@@ -651,7 +649,7 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 		var uniforms = lightProxy.material.uniforms;
 
 		var modelMatrix = light.matrixWorld;
-		var viewMatrix = _camera.matrixWorldInverse;  //KAD: Changed to global _camera as quick hack.
+		var viewMatrix = currentCamera.matrixWorldInverse;
 
 		positionVS.getPositionFromMatrix( modelMatrix );
 		positionVS.applyMatrix4( viewMatrix );
@@ -931,19 +929,18 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 
 		var devicePixelRatioNbr = (window.devicePixelRatio !== undefined) ? window.devicePixelRatio : 1;
 
-
 		effectFXAA.uniforms[ 'resolution' ].value.set( 1 / fullWidth, 1 / fullHeight );
 
 	};
 
 	this.setSize = function ( width, height ) {
 
-		// NOTE: We have to apply the device's pixel ratio to our dimension values; however, the underlying renderer in this class is
-		// WebGLRenderer, which already applies this ratio itself. So we want to pass the raw dimensional numbers into it.
-		this.renderer.setSize( width, height );
+        // NOTE: We have to apply the device's pixel ratio to our dimension values; however, the underlying renderer in this class is
+        // WebGLRenderer, which already applies this ratio itself. So we want to pass the raw dimensional numbers into it.
+        this.renderer.setSize( width, height );
 
-		fullWidth = width *  _devicePixelRatioNbr;
-		fullHeight = height *  _devicePixelRatioNbr;
+        fullWidth = width *  _devicePixelRatioNbr;
+        fullHeight = height *  _devicePixelRatioNbr;
 
 		this.setScale( currentScale );
 
@@ -951,12 +948,12 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 
 	//
 
-	function updateLightProxy ( proxy, camera ) {
+	function updateLightProxy ( proxy ) {
 
 		var uniforms = proxy.material.uniforms;
 
-		if ( uniforms[ "matProjInverse" ] ) uniforms[ "matProjInverse" ].value = camera.projectionMatrixInverse;
-		if ( uniforms[ "matView" ] ) uniforms[ "matView" ].value = camera.matrixWorldInverse;
+		if ( uniforms[ "matProjInverse" ] ) uniforms[ "matProjInverse" ].value = currentCamera.projectionMatrixInverse;
+		if ( uniforms[ "matView" ] ) uniforms[ "matView" ].value = currentCamera.matrixWorldInverse;
 
 		var originalLight = proxy.userData.originalLight;
 
@@ -992,8 +989,6 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 
 	this.render = function ( scene, camera ) {
 
-		_camera =  camera;
-
 		// setup deferred properties
 
 		if ( ! scene.userData.lightSceneProxy ) {
@@ -1006,12 +1001,14 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 
 		}
 
+		currentCamera = camera;
+
 		lightSceneProxy = scene.userData.lightSceneProxy;
 		lightSceneFullscreen = scene.userData.lightSceneFullscreen;
 
-		passColor.camera = camera;
-		passNormalDepth.camera = camera;
-		passLightProxy.camera = camera;
+		passColor.camera = currentCamera;
+		passNormalDepth.camera = currentCamera;
+		passLightProxy.camera = currentCamera;
 		passLightFullscreen.camera = THREE.EffectComposer.camera;
 
 		passColor.scene = scene;
@@ -1078,19 +1075,19 @@ THREE.WebGLDeferredRenderer = function ( parameters ) {
 
 		gl.depthFunc( gl.GEQUAL );
 
-		camera.projectionMatrixInverse.getInverse( camera.projectionMatrix );
+		currentCamera.projectionMatrixInverse.getInverse( currentCamera.projectionMatrix );
 
 		for ( var i = 0, il = lightSceneProxy.children.length; i < il; i ++ ) {
 
 			var proxy = lightSceneProxy.children[ i ];
-			updateLightProxy( proxy, camera );
+			updateLightProxy( proxy );
 
 		}
 
 		for ( var i = 0, il = lightSceneFullscreen.children.length; i < il; i ++ ) {
 
 			var proxy = lightSceneFullscreen.children[ i ];
-			updateLightProxy( proxy, camera );
+			updateLightProxy( proxy );
 
 		}
 
