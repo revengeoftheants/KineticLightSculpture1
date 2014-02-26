@@ -37,8 +37,6 @@
 	var SCULPTURE_ROTATE_NBRS = {MAX_SPEED: 1, START_LERP_TM: 8, START_LERP_TM_MS: 8000, END_LERP_TM_MS: 33000};
 	var ROLLING_AVG_NBRS = {SAMPLES_CNT: 20};
 
-	var SOUNDCLOUD = {CLIENT_ID: "ace41127a1d0a4904d5e548447130eee", TRACK_ID: 17889996};
-
 	// For patterns
 	var PATTERN_NBRS = {MIN_SPEED: 100, MAX_SPEED: 250, MAX_SPEED_SCALE: 1.3, MAX_INTENSITY_INCRMNT_RATIO: 0.1, START_POSITION_ARC_RADIUS: 100, MAX_CNT: 8};
 	var PATTERN_ID_PROP_TXT = "patternId";
@@ -260,7 +258,6 @@
 		camStartPos.applyMatrix4(_camOrbitTranslationMatrix);  // Translate the position from the origin to the orbit center (i.e. the look-at position)
 		_camera.position.copy(camStartPos);
 		_camera.lookAt(CAM.LOOK_AT_POS);
-		_camera.useQuaternion = true;
 		_camera.rotationAutoUpdate = true;  // This is set to true by default. It forces the rotationMatrix to get calculated each frame.
 		_scene.add(_camera);
 
@@ -375,6 +372,7 @@
 	 */
 	function initGUI() {
 		var gui = new dat.GUI();
+		gui.close();  // Start the GUI in its closed position.
 
 		_effectController = {
 			muteInd: false,
@@ -552,16 +550,16 @@
 	 */
 	function loadAudio() {
 		soundManager.onready( function() {
-			loadSoundCloudTrack(); 
+			loadTrack(); 
 		});
 	}
 
 
 
 	/*
-	 * Loads a SoundCloud track into SoundManager2.
+	 * Loads a track into SoundManager2.
 	 */
-	function loadSoundCloudTrack() {
+	function loadTrack() {
 
 		soundManager.stopAll();
 		soundManager.destroySound("track");
@@ -569,7 +567,7 @@
 		_audioTrack = soundManager.createSound(
 			{
 				id: "track",
-				url: "http://api.soundcloud.com/tracks/" + SOUNDCLOUD.TRACK_ID + "/stream?client_id=" + SOUNDCLOUD.CLIENT_ID,
+				url: "audio/BaffleV5.mp3",
 				usePeakData: false,
 				useEQData: true,  // True: enables frequency spectrum data
 				onfinish: handleAudioCompletion
@@ -945,7 +943,6 @@
 				rotateSpeedNbr = calcLerp(0, SCULPTURE_ROTATE_NBRS.MAX_SPEED, _sculptureElapsedLerpTm/SCULPTURE_ROTATE_NBRS.START_LERP_TM);
 			}
 
-			_sculpture.useQuaternion = true;
 			var quat = new THREE.Quaternion();
 
 			// Note: We don't want to calculate distance directly from the overall elapsed time because that doesn't work when we went to decelerate
@@ -1179,7 +1176,7 @@
 		// You will only get eqData for a looped track if you destory and re-create it. This appears to be a problem in the source SoundManager2_SMSound_AS3.as.
 		// The eqData object that flash passes to javascript is incorrect.
 		// http://stackoverflow.com/questions/11642556/soundcloud-soundmanager2-eqdata
-		loadSoundCloudTrack();
+		loadTrack();
 	}
 
 
